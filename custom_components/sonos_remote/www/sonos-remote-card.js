@@ -2,18 +2,47 @@ class SonosRemoteCard extends HTMLElement {
   setConfig(config) {
     this.config = config || {};
     this._view = this._view || "now";
-    this._selectedRooms = this._selectedRooms || new Set();\n    this._maResults = this._maResults || null;\n    this._maLoading = false;\n    this._backendInfo = this._backendInfo || null;
+    this._selectedRooms = this._selectedRooms || new Set();
+    this._maResults = this._maResults || null;
+    this._maLoading = false;
+    this._backendInfo = this._backendInfo || null;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
   }
   set hass(hass) {
     this._hass = hass;
-    this._players = this._backendInfo?.players?.map(p=>hass.states[p.entity_id]).filter(Boolean) || this._discoverPlayers(hass);\n    if (!this._infoLoading) this._loadBackendInfo();
+    this._players = this._backendInfo?.players?.map(p=>hass.states[p.entity_id]).filter(Boolean) || this._discoverPlayers(hass);
+    if (!this._infoLoading) this._loadBackendInfo();
     this._selected = this._selected && hass.states[this._selected]
       ? this._selected : (this.config.default_player || this._players[0]?.entity_id);
     if (!this._selectedRooms.size) (this._hass.states[this._selected]?.attributes?.group_members || [this._selected]).filter(Boolean).forEach(id => this._selectedRooms.add(id));
     this._render();
   }
-  getCardSize() { return 8; }\n  async _loadBackendInfo() {\n    if (!this._hass || this._infoLoading) return;\n    this._infoLoading = true;\n    try {\n      this._backendInfo = await this._hass.callWS({type:"sonos_remote/info"});\n      this._players = (this._backendInfo.players||[]).map(p=>this._hass.states[p.entity_id]).filter(Boolean);\n    } catch(e) { console.warn("Sonos Remote backend info unavailable",e); }\n    finally { this._infoLoading=false; this._render(); }\n  }\n  async _searchMA(query) {\n    if (!query?.trim() || this._maLoading) return;\n    this._maLoading=true; this._maResults=null; this._render();\n    try { this._maResults=await this._hass.callWS({type:"sonos_remote/search",query:query.trim(),limit:5}); }\n    catch(e) { this._maResults={error:e?.message||"Music Assistant search failed"}; }\n    finally { this._maLoading=false; this._render(); }\n  }\n  _maResultsHtml() {\n    if(this._maLoading)return `<div class="mahint">Searching Music Assistant…</div>`;\n    if(!this._maResults)return `<div class="mahint">Search Apple Music, Spotify and your Music Assistant library.</div>`;\n    if(this._maResults.error)return `<div class="mahint">${this._esc(this._maResults.error)}</div>`;\n    const groups=[["tracks","Tracks","track","mdi:music-note"],["albums","Albums","album","mdi:album"],["artists","Artists","artist","mdi:account-music"],["playlists","Playlists","playlist","mdi:playlist-music"],["radio","Radio","radio","mdi:radio"]];\n    let html="";\n    for(const [key,label,type,icon] of groups){const items=this._maResults[key]||[];if(!items.length)continue;html+=`<div class="sectiontitle">${label}</div>`+items.map(item=>{const uri=item.uri||item.media_content_id||"";const provider=uri.includes("://")?uri.split("://")[0]:"Music Assistant";const sub=item.artist||item.artist_name||item.album||item.album_name||provider;return `<button class="fav maitem" data-ma-uri="${this._esc(uri)}" data-ma-type="${type}"><span class="favart"><ha-icon icon="${icon}"></ha-icon></span><span><span class="favname">${this._esc(item.name||item.title||"Unknown")}</span><span class="favsub">${this._esc(sub)}</span></span><ha-icon icon="mdi:play"></ha-icon></button>`}).join("");}\n    return html||`<div class="mahint">No results found.</div>`;\n  }
+  getCardSize() { return 8; }
+  async _loadBackendInfo() {
+    if (!this._hass || this._infoLoading) return;
+    this._infoLoading = true;
+    try {
+      this._backendInfo = await this._hass.callWS({type:"sonos_remote/info"});
+      this._players = (this._backendInfo.players||[]).map(p=>this._hass.states[p.entity_id]).filter(Boolean);
+    } catch(e) { console.warn("Sonos Remote backend info unavailable",e); }
+    finally { this._infoLoading=false; this._render(); }
+  }
+  async _searchMA(query) {
+    if (!query?.trim() || this._maLoading) return;
+    this._maLoading=true; this._maResults=null; this._render();
+    try { this._maResults=await this._hass.callWS({type:"sonos_remote/search",query:query.trim(),limit:5}); }
+    catch(e) { this._maResults={error:e?.message||"Music Assistant search failed"}; }
+    finally { this._maLoading=false; this._render(); }
+  }
+  _maResultsHtml() {
+    if(this._maLoading)return `<div class="mahint">Searching Music Assistant…</div>`;
+    if(!this._maResults)return `<div class="mahint">Search Apple Music, Spotify and your Music Assistant library.</div>`;
+    if(this._maResults.error)return `<div class="mahint">${this._esc(this._maResults.error)}</div>`;
+    const groups=[["tracks","Tracks","track","mdi:music-note"],["albums","Albums","album","mdi:album"],["artists","Artists","artist","mdi:account-music"],["playlists","Playlists","playlist","mdi:playlist-music"],["radio","Radio","radio","mdi:radio"]];
+    let html="";
+    for(const [key,label,type,icon] of groups){const items=this._maResults[key]||[];if(!items.length)continue;html+=`<div class="sectiontitle">${label}</div>`+items.map(item=>{const uri=item.uri||item.media_content_id||"";const provider=uri.includes("://")?uri.split("://")[0]:"Music Assistant";const sub=item.artist||item.artist_name||item.album||item.album_name||provider;return `<button class="fav maitem" data-ma-uri="${this._esc(uri)}" data-ma-type="${type}"><span class="favart"><ha-icon icon="${icon}"></ha-icon></span><span><span class="favname">${this._esc(item.name||item.title||"Unknown")}</span><span class="favsub">${this._esc(sub)}</span></span><ha-icon icon="mdi:play"></ha-icon></button>`}).join("");}
+    return html||`<div class="mahint">No results found.</div>`;
+  }
   _discoverPlayers(hass) {
     const configured = this.config.entities || [];
     if (configured.length) return configured.map(id => hass.states[id]).filter(Boolean);
