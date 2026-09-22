@@ -1,6 +1,4 @@
 {
-  "name": "HA Sonos Remote",
-  "content_in_root": true,
-  "filename": "sonos-remote-card.js",
+  "name": "Sonos Remote",
   "render_readme": true
 }
