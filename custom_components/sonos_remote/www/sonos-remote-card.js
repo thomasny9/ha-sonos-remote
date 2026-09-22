@@ -74,6 +74,24 @@ class SonosRemoteCard extends HTMLElement {
     for(const p of this._players||[]) if(!grouped.has(p.entity_id)) choices.push({id:p.entity_id,label:p.attributes?.friendly_name||p.entity_id,sub:p.state==="playing"?(p.attributes?.media_title||"Playing"):"Not playing",icon:"mdi:speaker"});
     return choices;
   }
+  _currentGroup() {
+    if(!this._selected) return [];
+    const g=this._groups().find(x=>x.members.includes(this._selected));
+    return g?.members?.length ? [...g.members] : [this._selected];
+  }
+  _sameMembers(a,b) {
+    if(a.length!==b.length) return false;
+    const x=[...a].sort(), y=[...b].sort();
+    return x.every((v,i)=>v===y[i]);
+  }
+  _groupActionLabel() {
+    const chosen=[...this._selectedRooms];
+    const current=this._currentGroup();
+    if(!chosen.length) return "Select Rooms";
+    if(this._sameMembers(chosen,current)) return "Group Is Current";
+    if(current.length>1) return chosen.length===1 ? "Ungroup Selected Room" : "Update Group";
+    return chosen.length>1 ? `Group ${chosen.length} Rooms` : "Select Another Room";
+  }
   _call(service, data={}) {
     if (!this._selected) return;
     return this._hass.callService("media_player", service, {entity_id:this._selected, ...data});
@@ -113,14 +131,14 @@ class SonosRemoteCard extends HTMLElement {
       .group{margin:0 18px 18px;padding:13px 14px;border-radius:14px;background:#202124;cursor:pointer}.group small{display:block;color:var(--secondary-text-color);margin-bottom:3px}
       .tabs{flex:0 0 auto;display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid #2a2c2f;background:#151618;padding:7px 4px calc(7px + env(safe-area-inset-bottom));z-index:5}
       .tab{font-size:11px;opacity:.62;display:flex;flex-direction:column;gap:4px;align-items:center}.tab.active{opacity:1;color:#fff}.tab ha-icon{--mdc-icon-size:22px}
-      .rooms{padding:18px;min-height:100%;box-sizing:border-box}.roomhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.roomhead h1{margin:0;font-size:28px}.roomsummary{font-size:12px;color:#8f9297;margin:-6px 0 14px}.roomlist{border-top:1px solid #292b2f}.room{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:center;padding:10px 2px;border-bottom:1px solid #292b2f;background:transparent}.check{width:26px;height:26px;min-height:26px;border:1px solid #62656a;border-radius:50%;display:grid;place-items:center}.check.on{background:#f5f5f5;border-color:#f5f5f5;color:#111214}.roommain{min-width:0}.roomline{display:flex;align-items:center;gap:8px}.roomname{font-weight:650;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.roomstate{font-size:11px;color:#8f9297}.roomsub{font-size:12px;color:#8f9297;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}.roomvol{display:grid;grid-template-columns:20px 1fr 30px;gap:7px;align-items:center;margin-top:7px}.roomvol input{width:100%;margin:0}.roomvol span{text-align:right;font-size:11px;color:#8f9297}.roomvol ha-icon{--mdc-icon-size:17px;color:#8f9297}.applybar{position:sticky;bottom:0;padding:12px 0 2px;background:linear-gradient(transparent,#111214 22%)}.apply{width:100%;height:46px;border-radius:23px!important;background:#f5f5f5!important;color:#111214!important;font-weight:700;margin-top:8px}.pickrow small{display:block;color:#8f9297;font-size:11px;margin-top:2px}.pickrow b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .rooms{padding:18px;min-height:100%;box-sizing:border-box}.roomhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.roomhead h1{margin:0;font-size:28px}.roomsummary{font-size:12px;color:#8f9297;margin:-6px 0 14px}.roomlist{border-top:1px solid #292b2f}.room{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:center;padding:10px 2px;border-bottom:1px solid #292b2f;background:transparent}.check{width:26px;height:26px;min-height:26px;border:1px solid #62656a;border-radius:50%;display:grid;place-items:center}.check.on{background:#f5f5f5;border-color:#f5f5f5;color:#111214}.roommain{min-width:0}.roomline{display:flex;align-items:center;gap:8px}.roomname{font-weight:650;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.roomstate{font-size:11px;color:#8f9297}.roomsub{font-size:12px;color:#8f9297;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}.roomvol{display:grid;grid-template-columns:20px 1fr 30px;gap:7px;align-items:center;margin-top:7px}.roomvol input{width:100%;margin:0}.roomvol span{text-align:right;font-size:11px;color:#8f9297}.roomvol ha-icon{--mdc-icon-size:17px;color:#8f9297}.applybar{position:sticky;bottom:0;padding:12px 0 2px;background:linear-gradient(transparent,#111214 22%)}.apply{width:100%;height:46px;border-radius:23px!important;background:#f5f5f5!important;color:#111214!important;font-weight:700;margin-top:8px}.apply:disabled{opacity:.35;cursor:default}.roomstate:not(:empty){padding:2px 6px;border-radius:8px;background:#25272a}.pickrow small{display:block;color:#8f9297;font-size:11px;margin-top:2px}.pickrow b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .music{padding:18px;min-height:100%;box-sizing:border-box}.music .roomhead h1{color:#f5f5f5}.search{display:grid;grid-template-columns:24px 1fr;gap:8px;align-items:center;background:#202124;border:1px solid #2d2f33;border-radius:14px;padding:10px 13px;margin-bottom:16px;color:#a9acb1}.search input{border:0;outline:0;background:transparent;color:#f5f5f5;font:inherit;width:100%}.search input::placeholder{color:#777b81}.sectiontitle{font-size:17px;font-weight:700;margin:18px 0 10px;color:#f5f5f5}.fav{display:grid;grid-template-columns:48px minmax(0,1fr) 28px;gap:10px;align-items:center;width:100%;padding:9px;border-radius:12px;background:#202124;color:#f5f5f5;margin-bottom:7px;text-align:left}.favart{width:48px;height:48px;border-radius:9px;background:#2b2d31;display:grid;place-items:center;color:#d7d8da}.favname{display:block;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.favsub{display:block;font-size:12px;color:#8f9297;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mahint{padding:12px 4px;color:#8f9297;font-size:13px}.maitem{text-align:left;width:100%}.stub{min-height:100%;box-sizing:border-box;padding:20px}.stub h2{margin-top:0}@media(min-width:600px){ha-card{max-width:430px;margin:auto}}
     </style><ha-card>
     <main class="viewscroll">${this._view==="now"?`<div class="wrap"><div class="top"><div class="topcopy"><div class="eyebrow">Now Playing</div><button class="playerpick" id="playerpick"><span>${this._esc(a.friendly_name||"Select Sonos")}</span><ha-icon icon="mdi:chevron-down"></ha-icon></button></div></div><div class="picker ${this._pickerOpen?"open":""}" id="playerlist">${this._playerChoices().map(p=>`<button class="pickrow ${p.id===this._selected?"active":""}" data-select-player="${p.id}"><ha-icon icon="${p.icon}"></ha-icon><span><b>${this._esc(p.label)}</b><small>${this._esc(p.sub)}</small></span>${p.id===this._selected?`<ha-icon icon="mdi:check"></ha-icon>`:""}</button>`).join("")}</div>${art?`<img class="art" src="${art}" alt="">`:`<div class="placeholder">♫</div>`}<div class="meta"><h2>${this._esc(title)}</h2><div class="artist">${this._esc(artist)}</div><div class="album">${this._esc(album)}</div><div class="progress"><input id="seek" type="range" min="0" max="100" value="${progress}" ${duration?"":"disabled"}><div class="times"><span>${fmt(position)}</span><span>${duration?fmt(duration):"--:--"}</span></div></div></div></div>
     <div class="controls"><button class="${a.shuffle?"activecmd":""}" data-action="shuffle"><ha-icon icon="mdi:shuffle-variant"></ha-icon></button><button class="skip" data-action="previous"><ha-icon icon="mdi:skip-previous"></ha-icon></button><button class="main" data-action="toggle"><ha-icon icon="${playing?"mdi:pause":"mdi:play"}"></ha-icon></button><button class="skip" data-action="next"><ha-icon icon="mdi:skip-next"></ha-icon></button><button class="${a.repeat&&a.repeat!=="off"?"activecmd":""}" data-action="repeat"><ha-icon icon="${a.repeat==="one"?"mdi:repeat-once":"mdi:repeat"}"></ha-icon></button></div>
     <div class="volume"><button data-action="mute"><ha-icon icon="${a.is_volume_muted?"mdi:volume-off":"mdi:volume-medium"}"></ha-icon></button><input id="vol" type="range" min="0" max="100" value="${volume}"><span>${volume}</span></div>
     <div class="group" data-view="rooms"><small>Playing in</small>${this._esc(rooms||"Select a room")} ›</div>`:
-    this._view==="rooms"?`<div class="rooms"><div class="roomhead"><h1>Rooms</h1></div><div class="roomsummary">${this._players.length} Sonos rooms · ${this._groups().filter(g=>g.members.length>1).length} active group${this._groups().filter(g=>g.members.length>1).length===1?"":"s"}</div><div class="roomlist">${this._players.map(p=>{const pa=p.attributes||{},v=Math.round((pa.volume_level||0)*100),on=this._selectedRooms.has(p.entity_id),gm=pa.group_members||[p.entity_id],grouped=gm.length>1;return `<div class="room"><button class="check ${on?"on":""}" data-room="${p.entity_id}">${on?"✓":""}</button><div class="roommain"><div class="roomline"><div class="roomname">${this._esc(pa.friendly_name||p.entity_id)}</div><div class="roomstate">${grouped?`${gm.length} grouped`:(p.state==="playing"?"Playing":"")}</div></div><div class="roomsub">${this._esc(pa.media_title||(grouped?"Grouped":"Not playing"))}</div><div class="roomvol"><ha-icon icon="mdi:volume-medium"></ha-icon><input data-roomvol="${p.entity_id}" type="range" min="0" max="100" value="${v}"><span>${v}</span></div></div></div>`}).join("")}</div><div class="applybar"><button class="apply" id="apply">Apply to ${this._selectedRooms.size} Room${this._selectedRooms.size===1?"":"s"}</button></div></div>`:this._view==="music"?`<div class="music"><div class="roomhead"><h1>Music</h1></div><label class="search"><ha-icon icon="mdi:magnify"></ha-icon><input id="musicsearch" placeholder="Search Music Assistant" value="${this._esc(this._lastSearch||"")}"></label>${this._backendInfo?.music_assistant?.available?`<div id="maresults">${this._maResultsHtml()}</div>`:`<div class="mahint">Music Assistant is not connected to this Home Assistant instance.</div>`}<div class="sectiontitle">Sonos Favorites</div><div id="favorites">${this._favoritesHtml()}</div></div>`:`<div class="stub"><h2>${this._view[0].toUpperCase()+this._view.slice(1)}</h2><div class="artist">Coming in the next implementation stage</div></div>`}
+    this._view==="rooms"?`<div class="rooms"><div class="roomhead"><h1>Rooms</h1></div><div class="roomsummary">${this._players.length} Sonos rooms · ${this._groups().filter(g=>g.members.length>1).length} active group${this._groups().filter(g=>g.members.length>1).length===1?"":"s"}</div><div class="roomlist">${this._players.map(p=>{const pa=p.attributes||{},v=Math.round((pa.volume_level||0)*100),on=this._selectedRooms.has(p.entity_id),gm=pa.group_members||[p.entity_id],grouped=gm.length>1;return `<div class="room"><button class="check ${on?"on":""}" data-room="${p.entity_id}">${on?"✓":""}</button><div class="roommain"><div class="roomline"><div class="roomname">${this._esc(pa.friendly_name||p.entity_id)}</div><div class="roomstate">${grouped?`${gm.length} rooms`:(p.state==="playing"?"Playing":"")}</div></div><div class="roomsub">${this._esc(pa.media_title||(grouped?"Grouped":"Not playing"))}</div><div class="roomvol"><ha-icon icon="mdi:volume-medium"></ha-icon><input data-roomvol="${p.entity_id}" type="range" min="0" max="100" value="${v}"><span>${v}</span></div></div></div>`}).join("")}</div><div class="applybar"><button class="apply" id="apply" ${(!this._selectedRooms.size||this._sameMembers([...this._selectedRooms],this._currentGroup()))?"disabled":""}>${this._groupActionLabel()}</button></div></div>`:this._view==="music"?`<div class="music"><div class="roomhead"><h1>Music</h1></div><label class="search"><ha-icon icon="mdi:magnify"></ha-icon><input id="musicsearch" placeholder="Search Music Assistant" value="${this._esc(this._lastSearch||"")}"></label>${this._backendInfo?.music_assistant?.available?`<div id="maresults">${this._maResultsHtml()}</div>`:`<div class="mahint">Music Assistant is not connected to this Home Assistant instance.</div>`}<div class="sectiontitle">Sonos Favorites</div><div id="favorites">${this._favoritesHtml()}</div></div>`:`<div class="stub"><h2>${this._view[0].toUpperCase()+this._view.slice(1)}</h2><div class="artist">Coming in the next implementation stage</div></div>`}
     </main><nav class="tabs">${this._tab("now","mdi:music-circle","Now Playing")}${this._tab("rooms","mdi:speaker-multiple","Rooms")}${this._tab("music","mdi:music-note","Music")}${this._tab("queue","mdi:playlist-music","Queue")}</nav></ha-card>`;
     this.shadowRoot.querySelectorAll("[data-view]").forEach(el=>el.onclick=()=>{this._view=el.dataset.view;this._render()});
     this.shadowRoot.querySelector("#playerpick")?.addEventListener("click",()=>{this._pickerOpen=!this._pickerOpen;this._render();});
@@ -138,7 +156,41 @@ class SonosRemoteCard extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-favorite]").forEach(el=>el.onclick=()=>this._hass.callService("media_player","play_media",{entity_id:this._selected,media_content_type:"favorite_item_id",media_content_id:el.dataset.favorite}));
     this.shadowRoot.querySelector("#musicsearch")?.addEventListener("keydown",e=>{if(e.key==="Enter"){const ev=new CustomEvent("hass-notification",{detail:{message:"Local Sonos library search backend is next."},bubbles:true,composed:true});this.dispatchEvent(ev);}});
     this.shadowRoot.querySelector("#openmedia")?.addEventListener("click",()=>{this._hass.navigate?.("/media-browser/browser");});
-    this.shadowRoot.querySelector("#apply")?.addEventListener("click",async()=>{const chosen=[...this._selectedRooms];if(!chosen.length)return;const leader=chosen.includes(this._selected)?this._selected:chosen[0];const current=this._hass.states[leader]?.attributes?.group_members||[leader];for(const id of current){if(!chosen.includes(id))await this._hass.callService("media_player","unjoin",{entity_id:id});}const others=chosen.filter(id=>id!==leader);if(others.length)await this._hass.callService("media_player","join",{entity_id:leader,group_members:others});this._selected=leader;});
+    this.shadowRoot.querySelector("#apply")?.addEventListener("click",async()=>{
+      const chosen=[...this._selectedRooms];
+      if(!chosen.length)return;
+      const before=this._currentGroup();
+      if(this._sameMembers(chosen,before))return;
+      const leader=chosen.includes(this._selected)?this._selected:chosen[0];
+      try{
+        // Detach members that are being removed from the current group.
+        for(const id of before){
+          if(id!==leader && !chosen.includes(id))
+            await this._hass.callService("media_player","unjoin",{entity_id:id});
+        }
+        // Detach rooms selected from other existing groups before joining this one.
+        for(const id of chosen){
+          if(id===leader)continue;
+          const other=this._groups().find(g=>g.members.includes(id) && !g.members.includes(leader));
+          if(other?.members?.length>1)
+            await this._hass.callService("media_player","unjoin",{entity_id:id});
+        }
+        // If only the leader remains selected, separate it from any remaining group.
+        if(chosen.length===1 && before.length>1)
+          await this._hass.callService("media_player","unjoin",{entity_id:leader});
+        else {
+          const others=chosen.filter(id=>id!==leader);
+          if(others.length)
+            await this._hass.callService("media_player","join",{entity_id:leader,group_members:others});
+        }
+        this._selected=leader;
+        this._selectedRooms=new Set(chosen);
+        this._backendInfo=null;
+        await this._loadBackendInfo();
+      }catch(e){
+        this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:e?.message||"Unable to update Sonos group"},bubbles:true,composed:true}));
+      }
+    });
   }
 }
 if(!customElements.get("sonos-remote-card")) customElements.define("sonos-remote-card",SonosRemoteCard);
