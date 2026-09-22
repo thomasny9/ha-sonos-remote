@@ -2,6 +2,7 @@ class SonosRemoteCard extends HTMLElement {
   setConfig(config) {
     this.config = config || {};
     this._view = this._view || "now";
+    this._selectedRooms = this._selectedRooms || new Set();
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
   }
   set hass(hass) {
@@ -9,6 +10,7 @@ class SonosRemoteCard extends HTMLElement {
     this._players = this._discoverPlayers(hass);
     this._selected = this._selected && hass.states[this._selected]
       ? this._selected : (this.config.default_player || this._players[0]?.entity_id);
+    if (!this._selectedRooms.size) (this._hass.states[this._selected]?.attributes?.group_members || [this._selected]).filter(Boolean).forEach(id => this._selectedRooms.add(id));
     this._render();
   }
   getCardSize() { return 8; }
@@ -38,7 +40,7 @@ class SonosRemoteCard extends HTMLElement {
     this.shadowRoot.innerHTML=`
     <style>
       :host{display:block} ha-card{overflow:hidden;border-radius:22px;background:var(--ha-card-background,var(--card-background-color));color:var(--primary-text-color)}
-      .wrap{padding:18px 18px 8px}.art,.placeholder{aspect-ratio:1/1;width:100%;border-radius:18px;background:var(--secondary-background-color)}
+      .wrap{padding:18px 18px 8px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.top h1{font-size:28px;margin:0}.top button{width:42px;height:42px;border-radius:50%;background:var(--secondary-background-color)}.art,.placeholder{aspect-ratio:1/1;width:100%;border-radius:18px;background:var(--secondary-background-color)}
       .art{object-fit:cover;display:block}.placeholder{display:grid;place-items:center;font-size:64px;opacity:.65}
       h2{margin:18px 0 3px;font-size:26px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .artist,.album{color:var(--secondary-text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.album{font-size:13px;margin-top:3px}
@@ -50,8 +52,8 @@ class SonosRemoteCard extends HTMLElement {
       .tab{font-size:11px;opacity:.62;display:flex;flex-direction:column;gap:4px;align-items:center}.tab.active{opacity:1;color:var(--primary-color)}.tab ha-icon{--mdc-icon-size:22px}
       .stub{min-height:520px;padding:20px}.stub h2{margin-top:0}@media(min-width:600px){ha-card{max-width:430px;margin:auto}}
     </style><ha-card>
-    ${this._view==="now"?`<div class="wrap">${art?`<img class="art" src="${art}" alt="">`:`<div class="placeholder">♫</div>`}<h2>${this._esc(title)}</h2><div class="artist">${this._esc(artist)}</div><div class="album">${this._esc(album)}</div></div>
-    <div class="controls"><button class="skip" data-action="previous">◀︎</button><button class="main" data-action="toggle">${playing?"Ⅱ":"▶"}</button><button class="skip" data-action="next">▶︎</button></div>
+    ${this._view==="now"?`<div class="wrap"><div class="top"><h1>Now Playing</h1><button><ha-icon icon="mdi:dots-horizontal"></ha-icon></button></div>${art?`<img class="art" src="${art}" alt="">`:`<div class="placeholder">♫</div>`}<h2>${this._esc(title)}</h2><div class="artist">${this._esc(artist)}</div><div class="album">${this._esc(album)}</div></div>
+    <div class="controls"><button class="skip" data-action="previous"><ha-icon icon="mdi:skip-previous"></ha-icon></button><button class="main" data-action="toggle"><ha-icon icon="${playing?"mdi:pause":"mdi:play"}"></ha-icon></button><button class="skip" data-action="next"><ha-icon icon="mdi:skip-next"></ha-icon></button></div>
     <div class="volume"><ha-icon icon="mdi:volume-medium"></ha-icon><input id="vol" type="range" min="0" max="100" value="${volume}"><span>${volume}</span></div>
     <div class="group" data-view="rooms"><small>Playing in</small>${this._esc(rooms||"Select a room")} ›</div>`:
     `<div class="stub"><h2>${this._view[0].toUpperCase()+this._view.slice(1)}</h2><div class="artist">Coming in the next implementation stage</div></div>`}
@@ -66,4 +68,4 @@ class SonosRemoteCard extends HTMLElement {
 if(!customElements.get("sonos-remote-card")) customElements.define("sonos-remote-card",SonosRemoteCard);
 window.customCards=window.customCards||[];
 window.customCards.push({type:"sonos-remote-card",name:"Sonos Remote",description:"Mobile-first Sonos remote for Home Assistant."});
-console.info("%c SONOS REMOTE %c v0.1.0 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
+console.info("%c SONOS REMOTE %c v0.2.0 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
