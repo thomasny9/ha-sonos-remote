@@ -6,6 +6,8 @@ class SonosRemoteCard extends HTMLElement {
     this._maResults = this._maResults || null;
     this._maLoading = false;
     this._maCategory = this._maCategory || null;
+    this._scrollTop = this._scrollTop || {};
+    this._pickerScrollTop = this._pickerScrollTop || 0;
     this._progressTimer = null;
     this._backendInfo = this._backendInfo || null;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
@@ -123,6 +125,10 @@ class SonosRemoteCard extends HTMLElement {
   }
   _render() {
     if (!this.shadowRoot || !this._hass) return;
+    const oldMain=this.shadowRoot.querySelector(".viewscroll");
+    if(oldMain) this._scrollTop[this._view]=oldMain.scrollTop;
+    const oldPicker=this.shadowRoot.querySelector("#playerlist");
+    if(oldPicker) this._pickerScrollTop=oldPicker.scrollTop;
     const st=this._hass.states[this._selected], a=st?.attributes||{};
     const title=a.media_title||"Nothing playing", artist=a.media_artist||"", album=a.media_album_name||"";
     const art=a.entity_picture?this._hass.hassUrl(a.entity_picture):"", playing=st?.state==="playing";
@@ -160,9 +166,14 @@ class SonosRemoteCard extends HTMLElement {
     <div class="group" data-view="rooms"><small>Playing in</small>${this._esc(rooms||"Select a room")} ›</div>`:
     this._view==="rooms"?`<div class="rooms"><div class="roomhead"><h1>Rooms</h1></div><div class="roomsummary">${this._players.length} Sonos rooms · ${this._groups().filter(g=>g.members.length>1).length} active group${this._groups().filter(g=>g.members.length>1).length===1?"":"s"}</div><div class="roomlist">${this._players.map(p=>{const pa=p.attributes||{},v=Math.round((pa.volume_level||0)*100),on=this._selectedRooms.has(p.entity_id),gm=pa.group_members||[p.entity_id],grouped=gm.length>1;return `<div class="room"><button class="check ${on?"on":""}" data-room="${p.entity_id}">${on?"✓":""}</button><div class="roommain"><div class="roomline"><div class="roomname">${this._esc(pa.friendly_name||p.entity_id)}</div><div class="roomstate">${grouped?`${gm.length} rooms`:(p.state==="playing"?"Playing":"")}</div></div><div class="roomsub">${this._esc(pa.media_title||(grouped?"Grouped":"Not playing"))}</div><div class="roomvol"><ha-icon icon="mdi:volume-medium"></ha-icon><input data-roomvol="${p.entity_id}" type="range" min="0" max="100" value="${v}"><span>${v}</span></div></div></div>`}).join("")}</div><div class="applybar"><button class="apply" id="apply" ${(!this._selectedRooms.size||this._sameMembers([...this._selectedRooms],this._currentGroup()))?"disabled":""}>${this._groupActionLabel()}</button></div></div>`:this._view==="music"?`<div class="music"><div class="roomhead"><h1>Music</h1></div><div class="musicdestlabel">Play in</div><button class="playerpick" id="playerpick"><span>${this._esc(this._playerChoices().find(p=>p.id===this._selected)?.label||a.friendly_name||"Select Sonos")}</span><ha-icon icon="mdi:chevron-down"></ha-icon></button><div class="picker ${this._pickerOpen?"open":""}" id="playerlist">${this._playerChoices().map(p=>`<button class="pickrow ${p.id===this._selected?"active":""}" data-select-player="${p.id}"><ha-icon icon="${p.icon}"></ha-icon><span><b>${this._esc(p.label)}</b><small>${this._esc(p.sub)}</small></span>${p.id===this._selected?`<ha-icon icon="mdi:check"></ha-icon>`:""}</button>`).join("")}</div><label class="search"><ha-icon icon="mdi:magnify"></ha-icon><input id="musicsearch" placeholder="Search Music Assistant" value="${this._esc(this._lastSearch||"")}"></label>${this._backendInfo?.music_assistant?.available?`<div id="maresults">${this._maResultsHtml()}</div>`:`<div class="mahint">Music Assistant is not connected to this Home Assistant instance.</div>`}<div class="sectiontitle">Sonos Favorites</div><div id="favorites">${this._favoritesHtml()}</div></div>`:`<div class="stub"><h2>${this._view[0].toUpperCase()+this._view.slice(1)}</h2><div class="artist">Coming in the next implementation stage</div></div>`}
     </main><nav class="tabs">${this._tab("now","mdi:music-circle","Now Playing")}${this._tab("rooms","mdi:speaker-multiple","Rooms")}${this._tab("music","mdi:music-note","Music")}${this._tab("queue","mdi:playlist-music","Queue")}</nav></ha-card>`;
+    const mainScroll=this.shadowRoot.querySelector(".viewscroll");
+    if(mainScroll) mainScroll.scrollTop=this._scrollTop[this._view]||0;
+    const pickerScroll=this.shadowRoot.querySelector("#playerlist");
+    if(pickerScroll) pickerScroll.scrollTop=this._pickerScrollTop||0;
     this.shadowRoot.querySelectorAll("[data-view]").forEach(el=>el.onclick=()=>{this._view=el.dataset.view;this._render()});
-    this.shadowRoot.querySelector("#playerpick")?.addEventListener("click",()=>{this._pickerOpen=!this._pickerOpen;this._render();});
-    this.shadowRoot.querySelectorAll("[data-select-player]").forEach(el=>el.onclick=()=>{this._selected=el.dataset.selectPlayer;this._pickerOpen=false;const g=this._groups().find(x=>x.members.includes(this._selected));this._selectedRooms=new Set(g?.members||[this._selected]);this._render();});
+    this.shadowRoot.querySelector("#playerpick")?.addEventListener("click",()=>{this._pickerOpen=!this._pickerOpen;if(this._pickerOpen)this._pickerScrollTop=0;this._render();});
+    this.shadowRoot.querySelector("#playerlist")?.addEventListener("scroll",e=>{this._pickerScrollTop=e.currentTarget.scrollTop;},{passive:true});
+    this.shadowRoot.querySelectorAll("[data-select-player]").forEach(el=>el.onclick=()=>{this._selected=el.dataset.selectPlayer;this._pickerOpen=false;this._pickerScrollTop=0;const g=this._groups().find(x=>x.members.includes(this._selected));this._selectedRooms=new Set(g?.members||[this._selected]);this._render();});
     this.shadowRoot.querySelector('[data-action="toggle"]')?.addEventListener("click",()=>this._call("media_play_pause"));
     this.shadowRoot.querySelector('[data-action="previous"]')?.addEventListener("click",()=>this._call("media_previous_track"));
     this.shadowRoot.querySelector('[data-action="next"]')?.addEventListener("click",()=>this._call("media_next_track"));
