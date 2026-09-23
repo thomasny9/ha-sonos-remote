@@ -31,6 +31,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         websocket_api.async_register_command(hass, websocket_sonos_remote_info)
         websocket_api.async_register_command(hass, websocket_sonos_remote_search)
         websocket_api.async_register_command(hass, websocket_sonos_remote_play)
+        websocket_api.async_register_command(hass, websocket_sonos_remote_queue)
+        websocket_api.async_register_command(hass, websocket_sonos_remote_queue_action)
         domain_data["ws_registered"] = True
 
     frontend = hass.data.get("frontend")
@@ -103,6 +105,33 @@ def _ma_player_for_sonos(hass: HomeAssistant, sonos_entity_id: str) -> str | Non
     if len(contains) == 1:
         return contains[0]
     return None
+
+
+def _ma_client(hass: HomeAssistant):
+    entry = _ma_entry(hass)
+    runtime = getattr(entry, "runtime_data", None) if entry else None
+    return getattr(runtime, "mass", None)
+
+
+def _ma_player_id(hass: HomeAssistant, ma_entity_id: str) -> str | None:
+    registry = er.async_get(hass)
+    entity = registry.async_get(ma_entity_id)
+    if entity is None:
+        return None
+    unique_id = str(entity.unique_id)
+    return unique_id.split("mass_", 1)[1] if "mass_" in unique_id else unique_id
+
+
+async def _queue_context(hass: HomeAssistant, sonos_entity_id: str):
+    ma_entity = _ma_player_for_sonos(hass, sonos_entity_id)
+    mass = _ma_client(hass)
+    if ma_entity is None or mass is None:
+        return None, None, None
+    player_id = _ma_player_id(hass, ma_entity)
+    if not player_id:
+        return ma_entity, None, None
+    queue = await mass.player_queues.get_active_queue(player_id)
+    return ma_entity, mass, queue
 
 
 @websocket_api.websocket_command({"type": "sonos_remote/info"})
@@ -209,3 +238,64 @@ async def websocket_sonos_remote_play(hass, connection, msg):
         blocking=True,
     )
     connection.send_result(msg["id"], {"player": ma_player})
+
+
+@websocket_api.websocket_command(
+    {
+        "type": "sonos_remote/queue",
+        vol.Required("sonos_entity_id"): str,
+        vol.Optional("limit", default=100): vol.All(int, vol.Range(min=1, max=500)),
+    }
+)
+@websocket_api.async_response
+async def websocket_sonos_remote_queue(hass, connection, msg):
+    ma_entity, mass, queue = await _queue_context(hass, msg["sonos_entity_id"])
+    if ma_entity is None or mass is None:
+        connection.send_error(msg["id"], "music_assistant_player_not_found", "No unique Music Assistant player matches the selected Sonos room")
+        return
+    if queue is None:
+        connection.send_result(msg["id"], {"available": True, "items": [], "current_index": None})
+        return
+    items = await mass.player_queues.get_queue_items(queue.queue_id, limit=msg["limit"])
+    connection.send_result(
+        msg["id"],
+        {
+            "available": True,
+            "queue_id": queue.queue_id,
+            "current_index": queue.current_index,
+            "items": [item.to_dict() for item in items],
+        },
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        "type": "sonos_remote/queue_action",
+        vol.Required("sonos_entity_id"): str,
+        vol.Required("action"): vol.In(["play", "remove", "clear"]),
+        vol.Optional("item_id"): str,
+        vol.Optional("index"): int,
+    }
+)
+@websocket_api.async_response
+async def websocket_sonos_remote_queue_action(hass, connection, msg):
+    ma_entity, mass, queue = await _queue_context(hass, msg["sonos_entity_id"])
+    if ma_entity is None or mass is None or queue is None:
+        connection.send_error(msg["id"], "queue_unavailable", "No active Music Assistant queue is available for the selected Sonos room")
+        return
+    action = msg["action"]
+    if action == "clear":
+        await mass.player_queues.clear(queue.queue_id)
+    elif action == "play":
+        target = msg.get("item_id") if msg.get("item_id") is not None else msg.get("index")
+        if target is None:
+            connection.send_error(msg["id"], "queue_item_required", "Queue item is required")
+            return
+        await mass.player_queues.play_index(queue.queue_id, target)
+    elif action == "remove":
+        target = msg.get("item_id") if msg.get("item_id") is not None else msg.get("index")
+        if target is None:
+            connection.send_error(msg["id"], "queue_item_required", "Queue item is required")
+            return
+        await mass.player_queues.delete_item(queue.queue_id, target)
+    connection.send_result(msg["id"], {"ok": True})
