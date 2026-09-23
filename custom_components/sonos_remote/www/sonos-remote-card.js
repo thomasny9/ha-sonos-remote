@@ -5,6 +5,7 @@ class SonosRemoteCard extends HTMLElement {
     this._selectedRooms = this._selectedRooms || new Set();
     this._maResults = this._maResults || null;
     this._maLoading = false;
+    this._progressTimer = null;
     this._backendInfo = this._backendInfo || null;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
   }
@@ -113,7 +114,13 @@ class SonosRemoteCard extends HTMLElement {
     const title=a.media_title||"Nothing playing", artist=a.media_artist||"", album=a.media_album_name||"";
     const art=a.entity_picture?this._hass.hassUrl(a.entity_picture):"", playing=st?.state==="playing";
     const volume=Math.round((a.volume_level||0)*100);
-    const duration=Number(a.media_duration||0), position=Number(a.media_position||0);
+    const duration=Number(a.media_duration||0);
+    let position=Number(a.media_position||0);
+    if(playing && a.media_position_updated_at){
+      const updated=Date.parse(a.media_position_updated_at);
+      if(Number.isFinite(updated)) position+=Math.max(0,(Date.now()-updated)/1000);
+    }
+    if(duration>0) position=Math.min(duration,position);
     const progress=duration>0?Math.max(0,Math.min(100,(position/duration)*100)):0;
     const fmt=n=>{n=Math.max(0,Math.floor(Number(n)||0));return `${Math.floor(n/60)}:${String(n%60).padStart(2,"0")}`;};
     const members=a.group_members||a.sonos_group||[this._selected].filter(Boolean);
@@ -134,7 +141,7 @@ class SonosRemoteCard extends HTMLElement {
       .rooms{padding:18px;min-height:100%;box-sizing:border-box}.roomhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.roomhead h1{margin:0;font-size:28px}.roomsummary{font-size:12px;color:#8f9297;margin:-6px 0 14px}.roomlist{border-top:1px solid #292b2f}.room{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:center;padding:10px 2px;border-bottom:1px solid #292b2f;background:transparent}.check{width:26px;height:26px;min-height:26px;border:1px solid #62656a;border-radius:50%;display:grid;place-items:center}.check.on{background:#f5f5f5;border-color:#f5f5f5;color:#111214}.roommain{min-width:0}.roomline{display:flex;align-items:center;gap:8px}.roomname{font-weight:650;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.roomstate{font-size:11px;color:#8f9297}.roomsub{font-size:12px;color:#8f9297;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}.roomvol{display:grid;grid-template-columns:20px 1fr 30px;gap:7px;align-items:center;margin-top:7px}.roomvol input{width:100%;margin:0}.roomvol span{text-align:right;font-size:11px;color:#8f9297}.roomvol ha-icon{--mdc-icon-size:17px;color:#8f9297}.applybar{position:sticky;bottom:0;padding:12px 0 2px;background:linear-gradient(transparent,#111214 22%)}.apply{width:100%;height:46px;border-radius:23px!important;background:#f5f5f5!important;color:#111214!important;font-weight:700;margin-top:8px}.apply:disabled{opacity:.35;cursor:default}.roomstate:not(:empty){padding:2px 6px;border-radius:8px;background:#25272a}.pickrow small{display:block;color:#8f9297;font-size:11px;margin-top:2px}.pickrow b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .music{padding:18px;min-height:100%;box-sizing:border-box}.music .roomhead h1{color:#f5f5f5}.search{display:grid;grid-template-columns:24px 1fr;gap:8px;align-items:center;background:#202124;border:1px solid #2d2f33;border-radius:14px;padding:10px 13px;margin-bottom:16px;color:#a9acb1}.search input{border:0;outline:0;background:transparent;color:#f5f5f5;font:inherit;width:100%}.search input::placeholder{color:#777b81}.sectiontitle{font-size:17px;font-weight:700;margin:18px 0 10px;color:#f5f5f5}.fav{display:grid;grid-template-columns:48px minmax(0,1fr) 28px;gap:10px;align-items:center;width:100%;padding:9px;border-radius:12px;background:#202124;color:#f5f5f5;margin-bottom:7px;text-align:left}.favart{width:48px;height:48px;border-radius:9px;background:#2b2d31;display:grid;place-items:center;color:#d7d8da}.favname{display:block;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.favsub{display:block;font-size:12px;color:#8f9297;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mahint{padding:12px 4px;color:#8f9297;font-size:13px}.maitem{text-align:left;width:100%}.stub{min-height:100%;box-sizing:border-box;padding:20px}.stub h2{margin-top:0}@media(min-width:600px){ha-card{max-width:430px;margin:auto}}
     </style><ha-card>
-    <main class="viewscroll ${this._view==="now"?"nowview":""}">${this._view==="now"?`<div class="wrap"><div class="top"><div class="topcopy"><div class="eyebrow">Now Playing</div><button class="playerpick" id="playerpick"><span>${this._esc(a.friendly_name||"Select Sonos")}</span><ha-icon icon="mdi:chevron-down"></ha-icon></button></div></div><div class="picker ${this._pickerOpen?"open":""}" id="playerlist">${this._playerChoices().map(p=>`<button class="pickrow ${p.id===this._selected?"active":""}" data-select-player="${p.id}"><ha-icon icon="${p.icon}"></ha-icon><span><b>${this._esc(p.label)}</b><small>${this._esc(p.sub)}</small></span>${p.id===this._selected?`<ha-icon icon="mdi:check"></ha-icon>`:""}</button>`).join("")}</div>${art?`<img class="art" src="${art}" alt="">`:`<div class="placeholder">♫</div>`}<div class="meta"><h2>${this._esc(title)}</h2><div class="artist">${this._esc(artist)}</div><div class="album">${this._esc(album)}</div><div class="progress"><input id="seek" type="range" min="0" max="100" value="${progress}" ${duration?"":"disabled"}><div class="times"><span>${fmt(position)}</span><span>${duration?fmt(duration):"--:--"}</span></div></div></div></div>
+    <main class="viewscroll ${this._view==="now"?"nowview":""}">${this._view==="now"?`<div class="wrap"><div class="top"><div class="topcopy"><div class="eyebrow">Now Playing</div><button class="playerpick" id="playerpick"><span>${this._esc(a.friendly_name||"Select Sonos")}</span><ha-icon icon="mdi:chevron-down"></ha-icon></button></div></div><div class="picker ${this._pickerOpen?"open":""}" id="playerlist">${this._playerChoices().map(p=>`<button class="pickrow ${p.id===this._selected?"active":""}" data-select-player="${p.id}"><ha-icon icon="${p.icon}"></ha-icon><span><b>${this._esc(p.label)}</b><small>${this._esc(p.sub)}</small></span>${p.id===this._selected?`<ha-icon icon="mdi:check"></ha-icon>`:""}</button>`).join("")}</div>${art?`<img class="art" src="${art}" alt="">`:`<div class="placeholder">♫</div>`}<div class="meta"><h2>${this._esc(title)}</h2><div class="artist">${this._esc(artist)}</div><div class="album">${this._esc(album)}</div><div class="progress"><input id="seek" type="range" min="0" max="100" value="${progress}" ${duration?"":"disabled"}><div class="times"><span id="elapsed">${fmt(position)}</span><span>${duration?fmt(duration):"--:--"}</span></div></div></div></div>
     <div class="controls"><button class="${a.shuffle?"activecmd":""}" data-action="shuffle"><ha-icon icon="mdi:shuffle-variant"></ha-icon></button><button class="skip" data-action="previous"><ha-icon icon="mdi:skip-previous"></ha-icon></button><button class="main" data-action="toggle"><ha-icon icon="${playing?"mdi:pause":"mdi:play"}"></ha-icon></button><button class="skip" data-action="next"><ha-icon icon="mdi:skip-next"></ha-icon></button><button class="${a.repeat&&a.repeat!=="off"?"activecmd":""}" data-action="repeat"><ha-icon icon="${a.repeat==="one"?"mdi:repeat-once":"mdi:repeat"}"></ha-icon></button></div>
     <div class="volume"><button data-action="mute"><ha-icon icon="${a.is_volume_muted?"mdi:volume-off":"mdi:volume-medium"}"></ha-icon></button><input id="vol" type="range" min="0" max="100" value="${volume}"><span>${volume}</span></div>
     <div class="group" data-view="rooms"><small>Playing in</small>${this._esc(rooms||"Select a room")} ›</div>`:
@@ -151,6 +158,19 @@ class SonosRemoteCard extends HTMLElement {
     this.shadowRoot.querySelector('[data-action="mute"]')?.addEventListener("click",()=>this._call("volume_mute",{is_volume_muted:!a.is_volume_muted}));
     this.shadowRoot.querySelector("#vol")?.addEventListener("change",e=>this._call("volume_set",{volume_level:Number(e.target.value)/100}));
     this.shadowRoot.querySelector("#seek")?.addEventListener("change",e=>{if(duration>0)this._call("media_seek",{seek_position:(Number(e.target.value)/100)*duration});});
+    clearInterval(this._progressTimer);
+    this._progressTimer=null;
+    if(this._view==="now" && playing && duration>0){
+      let livePosition=position;
+      this._progressTimer=setInterval(()=>{
+        livePosition=Math.min(duration,livePosition+1);
+        const seek=this.shadowRoot?.querySelector("#seek");
+        const elapsed=this.shadowRoot?.querySelector("#elapsed");
+        if(seek) seek.value=String(Math.max(0,Math.min(100,(livePosition/duration)*100)));
+        if(elapsed) elapsed.textContent=fmt(livePosition);
+        if(livePosition>=duration){clearInterval(this._progressTimer);this._progressTimer=null;}
+      },1000);
+    }
     this.shadowRoot.querySelectorAll("[data-roomvol]").forEach(el=>el.addEventListener("change",e=>this._hass.callService("media_player","volume_set",{entity_id:e.target.dataset.roomvol,volume_level:Number(e.target.value)/100})));
     this.shadowRoot.querySelectorAll("[data-room]").forEach(el=>el.onclick=()=>{const id=el.dataset.room;this._selectedRooms.has(id)?this._selectedRooms.delete(id):this._selectedRooms.add(id);this._render();});
     this.shadowRoot.querySelectorAll("[data-favorite]").forEach(el=>el.onclick=()=>this._hass.callService("media_player","play_media",{entity_id:this._selected,media_content_type:"favorite_item_id",media_content_id:el.dataset.favorite}));
