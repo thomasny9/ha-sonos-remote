@@ -23,7 +23,8 @@ class SonosRemoteCard extends HTMLElement {
       ? this._selected : (this.config.default_player || this._players[0]?.entity_id);
     if (!this._selectedRooms.size) (this._hass.states[this._selected]?.attributes?.group_members || [this._selected]).filter(Boolean).forEach(id => this._selectedRooms.add(id));
     const active=this.shadowRoot?.activeElement;
-    if(!(this._view==="music" && active?.id==="musicsearch")) this._render();
+    const interactingWithPicker=this._pickerOpen && !!this.shadowRoot?.querySelector("#playerlist.open");
+    if(!interactingWithPicker && !(this._view==="music" && active?.id==="musicsearch")) this._render();
   }
   getCardSize() { return 8; }
   async _loadBackendInfo() {
