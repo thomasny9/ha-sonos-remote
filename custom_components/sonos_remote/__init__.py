@@ -145,7 +145,8 @@ async def websocket_sonos_remote_info(hass, connection, msg):
     {
         "type": "sonos_remote/search",
         vol.Required("query"): str,
-        vol.Optional("limit", default=5): vol.All(int, vol.Range(min=1, max=20)),
+        vol.Optional("limit", default=5): vol.All(int, vol.Range(min=1, max=50)),
+        vol.Optional("media_type"): vol.In(["artist", "album", "track", "playlist", "radio"]),
     }
 )
 @websocket_api.async_response
@@ -161,7 +162,7 @@ async def websocket_sonos_remote_search(hass, connection, msg):
         {
             "config_entry_id": ma_entry.entry_id,
             "name": msg["query"],
-            "media_type": ["artist", "album", "track", "playlist", "radio"],
+            "media_type": [msg["media_type"]] if msg.get("media_type") else ["artist", "album", "track", "playlist", "radio"],
             "limit": msg["limit"],
             "library_only": False,
         },
