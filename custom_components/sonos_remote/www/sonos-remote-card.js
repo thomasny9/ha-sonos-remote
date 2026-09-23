@@ -7,7 +7,7 @@ class SonosRemoteCard extends HTMLElement {
     this._maLoading = false;
     this._maCategory = this._maCategory || null;
     this._scrollTop = this._scrollTop || {};
-    this._pickerScrollTop = this._pickerScrollTop || 0;
+    this._pickerScrollTop = this._pickerScrollTop || {now:0,music:0,queue:0};
     this._queue = this._queue || null;
     this._queueLoading = false;
     this._queuePlayer = this._queuePlayer || null;
@@ -164,7 +164,7 @@ class SonosRemoteCard extends HTMLElement {
     const oldMain=this.shadowRoot.querySelector(".viewscroll");
     if(oldMain) this._scrollTop[this._view]=oldMain.scrollTop;
     const oldPicker=this.shadowRoot.querySelector("#playerlist");
-    if(oldPicker) this._pickerScrollTop=oldPicker.scrollTop;
+    if(oldPicker) this._pickerScrollTop[this._view]=oldPicker.scrollTop;
     const st=this._hass.states[this._selected], a=st?.attributes||{};
     const title=a.media_title||"Nothing playing", artist=a.media_artist||"", album=a.media_album_name||"";
     const art=a.entity_picture?this._hass.hassUrl(a.entity_picture):"", playing=st?.state==="playing";
@@ -205,11 +205,11 @@ class SonosRemoteCard extends HTMLElement {
     const mainScroll=this.shadowRoot.querySelector(".viewscroll");
     if(mainScroll) mainScroll.scrollTop=this._scrollTop[this._view]||0;
     const pickerScroll=this.shadowRoot.querySelector("#playerlist");
-    if(pickerScroll) pickerScroll.scrollTop=this._pickerScrollTop||0;
+    if(pickerScroll) pickerScroll.scrollTop=this._pickerScrollTop[this._view]||0;
     this.shadowRoot.querySelectorAll("[data-view]").forEach(el=>el.onclick=()=>{this._view=el.dataset.view;this._render();if(this._view==="queue")this._loadQueue();});
-    this.shadowRoot.querySelector("#playerpick")?.addEventListener("click",()=>{this._pickerOpen=!this._pickerOpen;if(this._pickerOpen)this._pickerScrollTop=0;this._render();});
-    this.shadowRoot.querySelector("#playerlist")?.addEventListener("scroll",e=>{this._pickerScrollTop=e.currentTarget.scrollTop;},{passive:true});
-    this.shadowRoot.querySelectorAll("[data-select-player]").forEach(el=>el.onclick=()=>{this._selected=el.dataset.selectPlayer;this._pickerOpen=false;this._pickerScrollTop=0;if(this._view==="queue"){this._queue=null;this._queuePlayer=null;}const g=this._groups().find(x=>x.members.includes(this._selected));this._selectedRooms=new Set(g?.members||[this._selected]);this._render();if(this._view==="queue")this._loadQueue(true);});
+    this.shadowRoot.querySelector("#playerpick")?.addEventListener("click",()=>{this._pickerOpen=!this._pickerOpen;this._render();});
+    this.shadowRoot.querySelector("#playerlist")?.addEventListener("scroll",e=>{this._pickerScrollTop[this._view]=e.currentTarget.scrollTop;},{passive:true});
+    this.shadowRoot.querySelectorAll("[data-select-player]").forEach(el=>el.onclick=()=>{this._selected=el.dataset.selectPlayer;this._pickerOpen=false;this._pickerScrollTop[this._view]=0;if(this._view==="queue"){this._queue=null;this._queuePlayer=null;}const g=this._groups().find(x=>x.members.includes(this._selected));this._selectedRooms=new Set(g?.members||[this._selected]);this._render();if(this._view==="queue")this._loadQueue(true);});
     this.shadowRoot.querySelector('[data-action="toggle"]')?.addEventListener("click",()=>this._call("media_play_pause"));
     this.shadowRoot.querySelector('[data-action="previous"]')?.addEventListener("click",()=>this._call("media_previous_track"));
     this.shadowRoot.querySelector('[data-action="next"]')?.addEventListener("click",()=>this._call("media_next_track"));
