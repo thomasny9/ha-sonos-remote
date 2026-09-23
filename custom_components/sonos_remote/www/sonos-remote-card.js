@@ -41,7 +41,7 @@ class SonosRemoteCard extends HTMLElement {
     if(this._maResults.error)return `<div class="mahint">${this._esc(this._maResults.error)}</div>`;
     const groups=[["tracks","Tracks","track","mdi:music-note"],["albums","Albums","album","mdi:album"],["artists","Artists","artist","mdi:account-music"],["playlists","Playlists","playlist","mdi:playlist-music"],["radio","Radio","radio","mdi:radio"]];
     let html="";
-    for(const [key,label,type,icon] of groups){const items=this._maResults[key]||[];if(!items.length)continue;html+=`<div class="sectiontitle">${label}</div>`+items.map(item=>{const uri=item.uri||item.media_content_id||"";const provider=uri.includes("://")?uri.split("://")[0]:"Music Assistant";const sub=item.artist||item.artist_name||item.album||item.album_name||provider;return `<button class="fav maitem" data-ma-uri="${this._esc(uri)}" data-ma-type="${type}"><span class="favart"><ha-icon icon="${icon}"></ha-icon></span><span><span class="favname">${this._esc(item.name||item.title||"Unknown")}</span><span class="favsub">${this._esc(sub)}</span></span><ha-icon icon="mdi:play"></ha-icon></button>`}).join("");}
+    for(const [key,label,type,icon] of groups){const items=this._maResults[key]||[];if(!items.length)continue;html+=`<div class="sectiontitle">${label}</div>`+items.map(item=>{const uri=item.uri||item.media_content_id||"";const provider=uri.includes("://")?uri.split("://")[0]:"Music Assistant";const artist=Array.isArray(item.artists)?item.artists.map(x=>x?.name||x).filter(Boolean).join(", "):(item.artist?.name||item.artist||item.artist_name||"");const album=item.album?.name||item.album||item.album_name||"";const sub=artist||album||provider;return `<button class="fav maitem" data-ma-uri="${this._esc(uri)}" data-ma-type="${type}"><span class="favart"><ha-icon icon="${icon}"></ha-icon></span><span><span class="favname">${this._esc(item.name||item.title||"Unknown")}</span><span class="favsub">${this._esc(sub)}</span></span><ha-icon icon="mdi:play"></ha-icon></button>`}).join("");}
     return html||`<div class="mahint">No results found.</div>`;
   }
   _discoverPlayers(hass) {
@@ -174,7 +174,29 @@ class SonosRemoteCard extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-roomvol]").forEach(el=>el.addEventListener("change",e=>this._hass.callService("media_player","volume_set",{entity_id:e.target.dataset.roomvol,volume_level:Number(e.target.value)/100})));
     this.shadowRoot.querySelectorAll("[data-room]").forEach(el=>el.onclick=()=>{const id=el.dataset.room;this._selectedRooms.has(id)?this._selectedRooms.delete(id):this._selectedRooms.add(id);this._render();});
     this.shadowRoot.querySelectorAll("[data-favorite]").forEach(el=>el.onclick=()=>this._hass.callService("media_player","play_media",{entity_id:this._selected,media_content_type:"favorite_item_id",media_content_id:el.dataset.favorite}));
-    this.shadowRoot.querySelector("#musicsearch")?.addEventListener("keydown",e=>{if(e.key==="Enter"){const ev=new CustomEvent("hass-notification",{detail:{message:"Local Sonos library search backend is next."},bubbles:true,composed:true});this.dispatchEvent(ev);}});
+    this.shadowRoot.querySelector("#musicsearch")?.addEventListener("keydown",e=>{
+      if(e.key==="Enter"){
+        e.preventDefault();
+        e.stopPropagation();
+        this._lastSearch=e.target.value;
+        this._searchMA(e.target.value);
+      }
+    });
+    this.shadowRoot.querySelectorAll("[data-ma-uri]").forEach(el=>el.onclick=async()=>{
+      try{
+        await this._hass.callWS({
+          type:"sonos_remote/play",
+          sonos_entity_id:this._selected,
+          media_id:el.dataset.maUri,
+          media_type:el.dataset.maType,
+          enqueue:"replace"
+        });
+        this._view="now";
+        this._render();
+      }catch(e){
+        this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:e?.message||"Unable to play this Music Assistant item"},bubbles:true,composed:true}));
+      }
+    });
     this.shadowRoot.querySelector("#openmedia")?.addEventListener("click",()=>{this._hass.navigate?.("/media-browser/browser");});
     this.shadowRoot.querySelector("#apply")?.addEventListener("click",async()=>{
       const chosen=[...this._selectedRooms];
