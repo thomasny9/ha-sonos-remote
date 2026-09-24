@@ -89,8 +89,8 @@ class SonosRemoteCard extends HTMLElement {
     const current=Number(this._queue.current_index);
     return items.map((item,i)=>{
       const media=item.media_item||{};
-      const name=media.name||item.name||"Unknown";
-      const artists=Array.isArray(media.artists)?media.artists.map(x=>x?.name||x).filter(Boolean).join(", "):(media.artist_str||item.artist||"");
+      const name=media.name||item.media_title||item.name||"Unknown";
+      const artists=Array.isArray(media.artists)?media.artists.map(x=>x?.name||x).filter(Boolean).join(", "):(media.artist_str||item.media_artist||item.artist||"");
       const isCurrent=i===current;
       const id=item.queue_item_id||item.item_id||item.id||"";
       return `<div class="qitem ${isCurrent?"current":""}"><button class="qplay" data-qplay="${this._esc(id)}" data-qindex="${i}"><span class="qnum">${isCurrent?'<ha-icon icon="mdi:volume-high"></ha-icon>':i+1}</span><span class="qcopy"><b>${this._esc(name)}</b><small>${this._esc(artists)}</small></span></button><button class="qremove" data-qremove="${this._esc(id)}" data-qindex="${i}" aria-label="Remove"><ha-icon icon="mdi:close"></ha-icon></button></div>`;
