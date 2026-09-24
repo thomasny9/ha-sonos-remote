@@ -2,7 +2,9 @@
 
 Sonos Remote is a mobile-first Home Assistant remote with a Lovelace frontend and a companion backend integration.
 
-## v0.1.0
+The Now Playing header includes quick access to the Music Assistant UI and a persistent **Fixed-volume Sonos** selector. Mark any Sonos entity that uses fixed line-out so the card hides its volume control while leaving normal Sonos speakers fully adjustable.
+
+## v0.4.0
 
 This first version establishes the combined architecture.
 
