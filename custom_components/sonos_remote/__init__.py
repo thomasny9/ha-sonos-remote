@@ -31,6 +31,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         websocket_api.async_register_command(hass, websocket_sonos_remote_info)
         websocket_api.async_register_command(hass, websocket_sonos_remote_search)
         websocket_api.async_register_command(hass, websocket_sonos_remote_play)
+        websocket_api.async_register_command(hass, websocket_sonos_remote_recently_played)
         websocket_api.async_register_command(hass, websocket_sonos_remote_queue)
         websocket_api.async_register_command(hass, websocket_sonos_remote_queue_action)
         domain_data["ws_registered"] = True
@@ -132,6 +133,31 @@ async def _queue_context(hass: HomeAssistant, sonos_entity_id: str):
         return ma_entity, None, None
     queue = await mass.player_queues.get_active_queue(player_id)
     return ma_entity, mass, queue
+
+
+@websocket_api.websocket_command(
+    {
+        "type": "sonos_remote/recently_played",
+        vol.Optional("limit", default=10): vol.All(int, vol.Range(min=1, max=50)),
+    }
+)
+@websocket_api.async_response
+async def websocket_sonos_remote_recently_played(hass, connection, msg):
+    mass = _ma_client(hass)
+    if mass is None:
+        connection.send_result(msg["id"], {"available": False, "items": []})
+        return
+    try:
+        items = await mass.music.recently_played(limit=msg["limit"], fully_played_only=False)
+        connection.send_result(
+            msg["id"],
+            {
+                "available": True,
+                "items": [item.to_dict() for item in items],
+            },
+        )
+    except Exception as err:  # MA API compatibility: fail quietly in optional feature
+        connection.send_result(msg["id"], {"available": False, "items": [], "error": str(err)})
 
 
 @websocket_api.websocket_command({"type": "sonos_remote/info"})
