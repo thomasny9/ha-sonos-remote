@@ -137,22 +137,23 @@ class SonosRemoteCard extends HTMLElement {
     return `<div class="fixedsettings"><div class="fixedtitle"><b>Fixed-volume Sonos</b><button id="closefixed"><ha-icon icon="mdi:close"></ha-icon></button></div><small>Mark Sonos outputs whose volume should not be controlled from this card.</small>${(this._players||[]).map(p=>`<label class="fixedrow"><span>${this._esc(p.attributes?.friendly_name||p.entity_id)}</span><input type="checkbox" data-fixed-player="${p.entity_id}" ${this._isFixedVolume(p)?"checked":""}></label>`).join("")}</div>`;
   }
   _openMusicAssistant() {
-    // Music Assistant's HAOS UI is an add-on ingress panel, not a normal
-    // Home Assistant frontend route. Ask HA to open the registered sidebar
-    // panel when possible; fall back to the standard MA add-on panel path.
-    const panel = this._hass?.panels
-      ? Object.entries(this._hass.panels).find(([key,p]) =>
-          key === "music_assistant" ||
-          key.includes("music_assistant") ||
-          String(p?.title||"").toLowerCase() === "music assistant")
-      : null;
-    const path = panel ? `/${panel[0]}` : "/d5369777_music_assistant";
-    if (this._hass?.navigate) {
-      this._hass.navigate(path);
-    } else {
-      history.pushState(null,"",path);
-      window.dispatchEvent(new Event("location-changed"));
-    }
+    // The HAOS Music Assistant app is exposed as a Supervisor ingress panel.
+    // Its frontend route is /<addon-slug>/ingress/; HA then establishes the
+    // authenticated /api/hassio_ingress/... session for the MA UI.
+    const path = "/d5369777_music_assistant/ingress/";
+    const ev = new CustomEvent("hass-action", {
+      detail: { action: "navigate", config: { navigation_path: path } },
+      bubbles: true,
+      composed: true,
+    });
+    this.dispatchEvent(ev);
+    // Fallback for HA frontend contexts that do not handle hass-action.
+    requestAnimationFrame(() => {
+      if (window.location.pathname !== path) {
+        history.pushState(null,"",path);
+        window.dispatchEvent(new Event("location-changed"));
+      }
+    });
   }
   _discoverPlayers(hass) {
     const configured = this.config.entities || [];
@@ -386,4 +387,4 @@ class SonosRemoteCard extends HTMLElement {
 if(!customElements.get("sonos-remote-card")) customElements.define("sonos-remote-card",SonosRemoteCard);
 window.customCards=window.customCards||[];
 window.customCards.push({type:"sonos-remote-card",name:"Sonos Remote",description:"Mobile-first Sonos remote for Home Assistant."});
-console.info("%c SONOS REMOTE %c v0.4.2 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
+console.info("%c SONOS REMOTE %c v0.4.3 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
