@@ -236,6 +236,7 @@ class SonosRemoteCard extends HTMLElement {
     </main><nav class="tabs">${this._tab("now","mdi:music-circle","Now Playing")}${this._tab("rooms","mdi:speaker-multiple","Rooms")}${this._tab("music","mdi:music-note","Music")}${this._tab("queue","mdi:playlist-music","Queue")}</nav></ha-card>`;
     const mainScroll=this.shadowRoot.querySelector(".viewscroll");
     if(mainScroll) mainScroll.scrollTop=this._scrollTop[this._view]||0;
+    if(mainScroll && this._view==="music") mainScroll.addEventListener("scroll",()=>{if(this._maMenu!==null){this._maMenu=null;this.shadowRoot.querySelector(".maactionmenu")?.remove();}},{passive:true});
     const pickerScroll=this.shadowRoot.querySelector("#playerlist");
     if(pickerScroll) pickerScroll.scrollTop=this._pickerScrollTop[this._view]||0;
     this.shadowRoot.querySelectorAll("[data-view]").forEach(el=>el.onclick=()=>{this._view=el.dataset.view;this._render();if(this._view==="queue")this._loadQueue();});
@@ -271,7 +272,7 @@ class SonosRemoteCard extends HTMLElement {
     });
     this.shadowRoot.querySelectorAll("[data-room]").forEach(el=>el.onclick=()=>{const id=el.dataset.room;this._selectedRooms.has(id)?this._selectedRooms.delete(id):this._selectedRooms.add(id);const on=this._selectedRooms.has(id);el.classList.toggle("on",on);el.textContent=on?"✓":"";const apply=this.shadowRoot.querySelector("#apply");if(apply){const same=!this._selectedRooms.size||this._sameMembers([...this._selectedRooms],this._currentGroup());apply.disabled=same;apply.textContent=this._groupActionLabel();}});
     this.shadowRoot.querySelectorAll("[data-ma-options]").forEach(el=>el.onclick=e=>{e.stopPropagation();this._maMenu=this._maMenu===el.dataset.maOptions?null:el.dataset.maOptions;this._render();});
-    this.shadowRoot.querySelectorAll("[data-ma-action]").forEach(el=>el.onclick=async e=>{e.stopPropagation();const action=el.dataset.maAction;try{await this._hass.callWS({type:"sonos_remote/play",sonos_entity_id:this._selected,media_id:el.dataset.maUri,media_type:el.dataset.maType,enqueue:action==="play"?"replace":action});this._maMenu=null;this._queue=null;this._queuePlayer=null;if(action==="play"){this._view="now";this._render();}else{this._render();this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:action==="next"?"Added to play next":"Added to Queue"},bubbles:true,composed:true}));}}catch(err){this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:err?.message||"Unable to update queue"},bubbles:true,composed:true}));}});
+    this.shadowRoot.querySelectorAll("[data-ma-action]").forEach(el=>el.onclick=async e=>{e.stopPropagation();const action=el.dataset.maAction;try{await this._hass.callWS({type:"sonos_remote/play",sonos_entity_id:this._selected,media_id:el.dataset.maUri,media_type:el.dataset.maType,enqueue:action==="play"?"replace":action});this._maMenu=null;this._queue=null;this._queuePlayer=null;if(action==="play"){this._view="now";this._render();}else{this._render();}}catch(err){this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:err?.message||"Unable to update queue"},bubbles:true,composed:true}));}});
     this.shadowRoot.querySelectorAll("[data-recent-uri]").forEach(el=>el.onclick=async()=>{try{await this._hass.callWS({type:"sonos_remote/play",sonos_entity_id:this._selected,media_id:el.dataset.recentUri,media_type:el.dataset.recentType,enqueue:"replace"});this._view="now";this._render();}catch(e){this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:e?.message||"Unable to play this recently played item"},bubbles:true,composed:true}));}});
     this.shadowRoot.querySelectorAll("[data-favorite]").forEach(el=>el.onclick=async()=>{try{await this._hass.callService("media_player","play_media",{entity_id:this._selected,media_content_type:"favorite_item_id",media_content_id:el.dataset.favorite});this._view="now";this._render();}catch(e){this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:e?.message||"Unable to play this Sonos Favorite"},bubbles:true,composed:true}));}});
     const musicSearch=this.shadowRoot.querySelector("#musicsearch");
@@ -303,7 +304,7 @@ class SonosRemoteCard extends HTMLElement {
     this.shadowRoot.querySelector("#openmedia")?.addEventListener("click",()=>{this._hass.navigate?.("/media-browser/browser");});
     this.shadowRoot.querySelectorAll("[data-qplay]").forEach(el=>el.onclick=()=>this._queueAction("play",el.dataset.qplay||null,Number(el.dataset.qindex)));
     this.shadowRoot.querySelectorAll("[data-qremove]").forEach(el=>el.onclick=e=>{e.stopPropagation();this._queueAction("remove",el.dataset.qremove||null,Number(el.dataset.qindex));});
-    this.shadowRoot.querySelector("#clearqueue")?.addEventListener("click",()=>{if(confirm("Clear the entire queue?"))this._queueAction("clear");});
+    this.shadowRoot.querySelector("#clearqueue")?.addEventListener("click",()=>this._queueAction("clear"));
     this.shadowRoot.querySelector("#apply")?.addEventListener("click",async()=>{
       const chosen=[...this._selectedRooms];
       if(!chosen.length)return;
