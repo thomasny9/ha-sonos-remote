@@ -33,7 +33,11 @@ class SonosRemoteCard extends HTMLElement {
     // Keep its DOM stable; room controls update themselves in place and Apply
     // performs the next full render after the grouping action completes.
     const interactingWithRooms=this._view==="rooms";
-    if(!interactingWithRooms && !interactingWithPicker && !(this._view==="music" && active?.id==="musicsearch")) this._render();
+    // Room Presets is another long interactive surface. Keep its DOM alive
+    // during HA/Sonos state updates just like Rooms so touch/momentum scrolling
+    // is not destroyed by a full Shadow DOM rebuild.
+    const interactingWithPresets=this._view==="presets";
+    if(!interactingWithRooms && !interactingWithPresets && !interactingWithPicker && !(this._view==="music" && active?.id==="musicsearch")) this._render();
   }
   getCardSize() { return 8; }
   async _loadBackendInfo() {
