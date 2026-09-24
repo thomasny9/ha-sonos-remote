@@ -19,6 +19,9 @@ class SonosRemoteCard extends HTMLElement {
     this._volumeSendTimer = null;
     this._settingsOpen = this._settingsOpen || false;
     this._nowMenuOpen = this._nowMenuOpen || false;
+    this._myMusic = this._myMusic || null;
+    this._myMusicLoading = false;
+    this._myMusicStack = this._myMusicStack || [];
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
   }
   set hass(hass) {
@@ -45,7 +48,8 @@ class SonosRemoteCard extends HTMLElement {
     // rebuild it while it is open or the scroll container jumps back to top.
     // Explicit queue actions and room changes already refresh it themselves.
     const interactingWithQueue=this._view==="queue";
-    if(!interactingWithRooms && !interactingWithMusic && !interactingWithQueue && !interactingWithPicker) this._render();
+    const interactingWithMyMusic=this._view==="mymusic";
+    if(!interactingWithRooms && !interactingWithMusic && !interactingWithQueue && !interactingWithMyMusic && !interactingWithPicker) this._render();
   }
   getCardSize() { return 8; }
   async _loadBackendInfo() {
@@ -96,6 +100,48 @@ class SonosRemoteCard extends HTMLElement {
     }
     return html||`<div class="mahint">No results found.</div>`;
   }
+  async _loadMyMusic(path=null, push=false) {
+    if(!this._hass || this._myMusicLoading || !this._backendInfo?.music_assistant?.available) return;
+    this._myMusicLoading=true;
+    if(push && this._myMusic) this._myMusicStack.push({path:this._myMusic.path, data:this._myMusic});
+    this._render();
+    try {
+      const msg={type:"sonos_remote/browse"};
+      if(path) msg.path=path;
+      this._myMusic=await this._hass.callWS(msg);
+    } catch(e) {
+      this._myMusic={path,error:e?.message||"Unable to browse Music Assistant",items:[]};
+    } finally {
+      this._myMusicLoading=false;
+      this._render();
+    }
+  }
+  _browseType(item) {
+    const raw=item.media_type||item.media_item_type||item.type||"";
+    return String(raw).toLowerCase().replace("mediatype.","");
+  }
+  _browsePath(item) { return item.path||item.uri||""; }
+  _browsePlayable(item) {
+    if(item.is_playable===true) return true;
+    return ["track","album","artist","playlist","radio","podcast","podcast_episode","audiobook"].includes(this._browseType(item));
+  }
+  _myMusicHtml() {
+    if(this._myMusicLoading && !this._myMusic) return `<div class="mahint">Loading My Music…</div>`;
+    if(this._myMusic?.error) return `<div class="mahint">${this._esc(this._myMusic.error)}</div>`;
+    const items=this._myMusic?.items||[];
+    if(!items.length) return `<div class="mahint">${this._myMusicLoading?"Loading…":"No browsable Music Assistant sources found."}</div>`;
+    const iconFor=t=>({artist:"mdi:account-music",album:"mdi:album",track:"mdi:music-note",playlist:"mdi:playlist-music",radio:"mdi:radio",podcast:"mdi:podcast",podcast_episode:"mdi:podcast",audiobook:"mdi:book-music"}[t]||"mdi:folder-music");
+    return items.map((item,i)=>{
+      const type=this._browseType(item);
+      const path=this._browsePath(item);
+      const playable=this._browsePlayable(item);
+      const name=item.name||item.title||item.translation_key||"Music";
+      const sub=item.provider_name||item.provider||item.owner||String(type||"Browse").replaceAll("_"," ");
+      const canBrowse=!!path && (type==="folder" || type==="browse_folder" || item.is_playable===false || !playable);
+      return `<div class="mawrap browseitem"><button class="fav maitem" data-browse-index="${i}" data-browse-path="${this._esc(path)}" data-browse-open="${canBrowse?"1":"0"}"><span class="favart"><ha-icon icon="${iconFor(type)}"></ha-icon></span><span><span class="favname">${this._esc(name)}</span><span class="favsub">${this._esc(sub)}</span></span><ha-icon icon="${canBrowse?"mdi:chevron-right":"mdi:play"}"></ha-icon></button>${playable?`<button class="maoptions" data-browse-options="${i}" aria-label="Playback options"><ha-icon icon="mdi:dots-vertical"></ha-icon></button>${this._maMenu===`browse:${i}`?`<div class="maactionmenu"><button data-browse-action="play" data-browse-index="${i}">Play Now</button><button data-browse-action="next" data-browse-index="${i}">Play Next</button><button data-browse-action="add" data-browse-index="${i}">Add to End of Queue</button></div>`:""}`:""}</div>`;
+    }).join("");
+  }
+
   async _loadQueue(force=false) {
     if(!this._selected || this._queueLoading) return;
     if(!force && this._queuePlayer===this._selected && this._queue) return;
@@ -235,7 +281,7 @@ class SonosRemoteCard extends HTMLElement {
     const rooms=members.map(id=>this._hass.states[id]?.attributes?.friendly_name||id).join(" + ");
     this.shadowRoot.innerHTML=`
     <style>
-      :host{display:block} ha-card{height:min(760px,calc(100dvh - 96px));min-height:620px;overflow:hidden;border-radius:22px;background:#111214;color:#f5f5f5;border:0;box-shadow:0 14px 40px rgba(0,0,0,.28);display:flex;flex-direction:column}.viewscroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#4a4d52 transparent}.viewscroll.nowview{overflow-y:hidden}
+      :host{display:block} ha-card{height:min(760px,calc(100dvh - 96px));min-height:620px;overflow:hidden;border-radius:22px;background:#111214;color:#f5f5f5;border:0;box-shadow:0 14px 40px rgba(0,0,0,.28);display:flex;flex-direction:column}.viewscroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#4a4d52 transparent}.viewscroll.nowview{overflow-y:hidden}.mymusichead{display:flex;align-items:center;gap:8px}.mymusichead h1{flex:1}.mymusicback{display:flex;align-items:center;gap:2px;color:#b7bac0;font-size:13px;padding:6px 0}.browseitem .fav{padding-right:8px}
       .wrap{padding:12px 18px 4px}.eyebrow{display:flex;align-items:center;justify-content:center;gap:8px}.top{position:relative}.eyebrow{padding:0 36px}.nowmenuwrap{position:absolute;right:0;top:0;z-index:44}.nowmore{display:grid;place-items:center;width:32px;min-height:28px;border-radius:9px;background:transparent;color:#b7bac0}.nowmore ha-icon{--mdc-icon-size:20px}.nowmenu{position:absolute;right:0;top:32px;width:190px;background:#202124;border:1px solid #34363a;border-radius:12px;padding:5px;box-shadow:0 12px 30px rgba(0,0,0,.45);text-align:left;text-transform:none;letter-spacing:normal}.nowmenu button{display:flex;align-items:center;gap:9px;width:100%;min-height:40px;padding:0 10px;border-radius:8px;font-size:13px}.nowmenu button:hover{background:#303236}.nowmenu ha-icon{--mdc-icon-size:18px}.fixedsettings{position:absolute;z-index:40;left:18px;right:18px;top:42px;background:#202124;border:1px solid #34363a;border-radius:14px;padding:12px;box-shadow:0 14px 34px rgba(0,0,0,.55);text-align:left;text-transform:none;letter-spacing:normal}.fixedtitle{display:flex;align-items:center;justify-content:space-between;font-size:14px;color:#f5f5f5}.fixedtitle button{min-height:32px;width:32px}.fixedsettings>small{display:block;color:#8f9297;font-size:11px;margin:2px 0 8px}.fixedrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 2px;border-top:1px solid #34363a;color:#f5f5f5;font-size:13px}.fixedrow input{width:18px;height:18px}.top{display:flex;justify-content:center;align-items:center;margin-bottom:8px}.playerpick{display:flex;align-items:center;justify-content:center;gap:5px;padding:5px 8px;margin:0;background:transparent;color:#f5f5f5;font-size:20px;font-weight:700}.playerpick span{max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.picker{display:none;margin:0 0 14px;padding:8px;border-radius:14px;background:#202124}.picker.open{display:block;max-height:240px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#4a4d52 transparent}.pickrow{display:flex;align-items:center;gap:9px;width:100%;padding:9px 10px;border-radius:10px;text-align:left;color:#f5f5f5}.pickrow.active{background:#303236}.pickrow span{flex:1}.art,.placeholder{aspect-ratio:1/1;width:min(100%,300px);margin:0 auto;border-radius:16px;background:#202124}
       .art{object-fit:contain;display:block;background:#111214}.placeholder{display:grid;place-items:center;font-size:64px;opacity:.65}.meta{text-align:center}.progress{margin:8px 0 2px}.progress input{width:100%}.progress.live{margin:13px 0 7px}.liveline{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;color:#8f9297;font-size:10px;letter-spacing:.12em}.liveline span{height:1px;background:#3b3d41}.liveline b{font-weight:700}.times{display:flex;justify-content:space-between;color:#8f9297;font-size:11px}.topcopy{text-align:center;min-width:0}.eyebrow{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#8f9297;font-weight:700}
       h2{margin:10px 0 3px;font-size:24px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -253,14 +299,14 @@ class SonosRemoteCard extends HTMLElement {
     <div class="controls"><button class="${a.shuffle?"activecmd":""}" data-action="shuffle"><ha-icon icon="mdi:shuffle-variant"></ha-icon></button><button class="skip" data-action="previous"><ha-icon icon="mdi:skip-previous"></ha-icon></button><button class="main" data-action="toggle"><ha-icon icon="${playing?"mdi:pause":"mdi:play"}"></ha-icon></button><button class="skip" data-action="next"><ha-icon icon="mdi:skip-next"></ha-icon></button><button class="${a.repeat&&a.repeat!=="off"?"activecmd":""}" data-action="repeat"><ha-icon icon="${a.repeat==="one"?"mdi:repeat-once":"mdi:repeat"}"></ha-icon></button></div>
     ${this._isFixedVolume(st)?`<div class="roomfixed"><ha-icon icon="mdi:volume-lock"></ha-icon><span>Fixed output</span></div>`:`<div class="volume"><button data-action="mute"><ha-icon icon="${a.is_volume_muted?"mdi:volume-off":"mdi:volume-medium"}"></ha-icon></button><input id="vol" type="range" min="0" max="100" value="${volume}"><span>${volume}</span></div>`}
     <div class="group" data-view="rooms"><small>Playing in</small>${this._esc(rooms||"Select a room")} ›</div>`:
-    this._view==="rooms"?`<div class="rooms"><div class="roomhead"><h1>Rooms</h1></div><div class="roomsummary">${this._players.length} Sonos rooms · ${this._groups().filter(g=>g.members.length>1).length} active group${this._groups().filter(g=>g.members.length>1).length===1?"":"s"}</div><div class="roomlist">${this._players.map(p=>{const pa=p.attributes||{},v=Math.round((pa.volume_level||0)*100),on=this._selectedRooms.has(p.entity_id),gm=pa.group_members||[p.entity_id],grouped=gm.length>1;return `<div class="room"><button class="check ${on?"on":""}" data-room="${p.entity_id}">${on?"✓":""}</button><div class="roommain"><div class="roomline"><div class="roomname">${this._esc(pa.friendly_name||p.entity_id)}</div><div class="roomstate">${grouped?`${gm.length} rooms`:(p.state==="playing"?"Playing":"")}</div></div><div class="roomsub">${this._esc(pa.media_title||(grouped?"Grouped":"Not playing"))}</div>${this._isFixedVolume(p)?`<div class="roomfixed"><ha-icon icon="mdi:volume-lock"></ha-icon><span>Fixed output</span></div>`:`<div class="roomvol"><ha-icon icon="mdi:volume-medium"></ha-icon><input data-roomvol="${p.entity_id}" type="range" min="0" max="100" value="${v}"><span>${v}</span></div>`}</div></div>`}).join("")}</div><div class="applybar"><button class="apply" id="apply" ${(!this._selectedRooms.size||this._sameMembers([...this._selectedRooms],this._currentGroup()))?"disabled":""}>${this._groupActionLabel()}</button></div></div>`:this._view==="music"?`<div class="music"><div class="roomhead"><h1>Music</h1></div><div class="musicdestlabel">Play in</div><button class="playerpick" id="playerpick"><span>${this._esc(this._playerChoices().find(p=>p.id===this._selected)?.label||a.friendly_name||"Select Sonos")}</span><ha-icon icon="mdi:chevron-down"></ha-icon></button><div class="picker ${this._pickerOpen?"open":""}" id="playerlist">${this._playerChoices().map(p=>`<button class="pickrow ${p.id===this._selected?"active":""}" data-select-player="${p.id}"><ha-icon icon="${p.icon}"></ha-icon><span><b>${this._esc(p.label)}</b><small>${this._esc(p.sub)}</small></span>${p.id===this._selected?`<ha-icon icon="mdi:check"></ha-icon>`:""}</button>`).join("")}</div><label class="search"><ha-icon icon="mdi:magnify"></ha-icon><input id="musicsearch" placeholder="Search Music Assistant" value="${this._esc(this._lastSearch||"")}"></label>${this._backendInfo?.music_assistant?.available?`<div id="maresults">${this._maResultsHtml()}</div>`:""}${this._backendInfo?.music_assistant?.available?`<div id="recent">${this._recentHtml()}</div>`:""}<div class="sectiontitle">Sonos Favorites</div><div id="favorites">${this._favoritesHtml()}</div></div>`:this._view==="queue"?`<div class="queue"><div class="queuehead"><div class="roomhead"><h1>Queue</h1></div>${(this._queue?.items||[]).length?`<button class="clearq" id="clearqueue">Clear Queue</button>`:""}</div><div class="musicdestlabel">Queue for</div><button class="playerpick" id="playerpick"><span>${this._esc(this._playerChoices().find(p=>p.id===this._selected)?.label||a.friendly_name||"Select Sonos")}</span><ha-icon icon="mdi:chevron-down"></ha-icon></button><div class="picker ${this._pickerOpen?"open":""}" id="playerlist">${this._playerChoices().map(p=>`<button class="pickrow ${p.id===this._selected?"active":""}" data-select-player="${p.id}"><ha-icon icon="${p.icon}"></ha-icon><span><b>${this._esc(p.label)}</b><small>${this._esc(p.sub)}</small></span>${p.id===this._selected?`<ha-icon icon="mdi:check"></ha-icon>`:""}</button>`).join("")}</div><div id="queueitems">${this._queueHtml()}</div></div>`:`<div class="stub"><h2>${this._view[0].toUpperCase()+this._view.slice(1)}</h2><div class="artist">Coming in the next implementation stage</div></div>`}
-    </main><nav class="tabs">${this._tab("now","mdi:music-circle","Now Playing")}${this._tab("rooms","mdi:speaker-multiple","Rooms")}${this._tab("music","mdi:music-note","Music")}${this._tab("queue","mdi:playlist-music","Queue")}</nav></ha-card>`;
+    this._view==="rooms"?`<div class="rooms"><div class="roomhead"><h1>Rooms</h1></div><div class="roomsummary">${this._players.length} Sonos rooms · ${this._groups().filter(g=>g.members.length>1).length} active group${this._groups().filter(g=>g.members.length>1).length===1?"":"s"}</div><div class="roomlist">${this._players.map(p=>{const pa=p.attributes||{},v=Math.round((pa.volume_level||0)*100),on=this._selectedRooms.has(p.entity_id),gm=pa.group_members||[p.entity_id],grouped=gm.length>1;return `<div class="room"><button class="check ${on?"on":""}" data-room="${p.entity_id}">${on?"✓":""}</button><div class="roommain"><div class="roomline"><div class="roomname">${this._esc(pa.friendly_name||p.entity_id)}</div><div class="roomstate">${grouped?`${gm.length} rooms`:(p.state==="playing"?"Playing":"")}</div></div><div class="roomsub">${this._esc(pa.media_title||(grouped?"Grouped":"Not playing"))}</div>${this._isFixedVolume(p)?`<div class="roomfixed"><ha-icon icon="mdi:volume-lock"></ha-icon><span>Fixed output</span></div>`:`<div class="roomvol"><ha-icon icon="mdi:volume-medium"></ha-icon><input data-roomvol="${p.entity_id}" type="range" min="0" max="100" value="${v}"><span>${v}</span></div>`}</div></div>`}).join("")}</div><div class="applybar"><button class="apply" id="apply" ${(!this._selectedRooms.size||this._sameMembers([...this._selectedRooms],this._currentGroup()))?"disabled":""}>${this._groupActionLabel()}</button></div></div>`:this._view==="music"?`<div class="music"><div class="roomhead"><h1>Music</h1></div><div class="musicdestlabel">Play in</div><button class="playerpick" id="playerpick"><span>${this._esc(this._playerChoices().find(p=>p.id===this._selected)?.label||a.friendly_name||"Select Sonos")}</span><ha-icon icon="mdi:chevron-down"></ha-icon></button><div class="picker ${this._pickerOpen?"open":""}" id="playerlist">${this._playerChoices().map(p=>`<button class="pickrow ${p.id===this._selected?"active":""}" data-select-player="${p.id}"><ha-icon icon="${p.icon}"></ha-icon><span><b>${this._esc(p.label)}</b><small>${this._esc(p.sub)}</small></span>${p.id===this._selected?`<ha-icon icon="mdi:check"></ha-icon>`:""}</button>`).join("")}</div><label class="search"><ha-icon icon="mdi:magnify"></ha-icon><input id="musicsearch" placeholder="Search Music Assistant" value="${this._esc(this._lastSearch||"")}"></label>${this._backendInfo?.music_assistant?.available?`<div id="maresults">${this._maResultsHtml()}</div>`:""}${this._backendInfo?.music_assistant?.available?`<div id="recent">${this._recentHtml()}</div>`:""}<div class="sectiontitle">Sonos Favorites</div><div id="favorites">${this._favoritesHtml()}</div></div>`:this._view==="mymusic"?`<div class="music"><div class="mymusichead">${this._myMusicStack.length?`<button class="mymusicback" id="mymusicback"><ha-icon icon="mdi:chevron-left"></ha-icon>Back</button>`:""}<h1>My Music</h1></div><div class="musicdestlabel">Browse Music Assistant</div><div id="mymusicitems">${this._myMusicHtml()}</div></div>`:this._view==="queue"?`<div class="queue"><div class="queuehead"><div class="roomhead"><h1>Queue</h1></div>${(this._queue?.items||[]).length?`<button class="clearq" id="clearqueue">Clear Queue</button>`:""}</div><div class="musicdestlabel">Queue for</div><button class="playerpick" id="playerpick"><span>${this._esc(this._playerChoices().find(p=>p.id===this._selected)?.label||a.friendly_name||"Select Sonos")}</span><ha-icon icon="mdi:chevron-down"></ha-icon></button><div class="picker ${this._pickerOpen?"open":""}" id="playerlist">${this._playerChoices().map(p=>`<button class="pickrow ${p.id===this._selected?"active":""}" data-select-player="${p.id}"><ha-icon icon="${p.icon}"></ha-icon><span><b>${this._esc(p.label)}</b><small>${this._esc(p.sub)}</small></span>${p.id===this._selected?`<ha-icon icon="mdi:check"></ha-icon>`:""}</button>`).join("")}</div><div id="queueitems">${this._queueHtml()}</div></div>`:`<div class="stub"><h2>${this._view[0].toUpperCase()+this._view.slice(1)}</h2><div class="artist">Coming in the next implementation stage</div></div>`}
+    </main><nav class="tabs">${this._tab("now","mdi:music-circle","Now Playing")}${this._tab("rooms","mdi:speaker-multiple","Rooms")}${this._tab("music","mdi:music-note","Music")}${this._tab("queue","mdi:playlist-music","Queue")}${this._backendInfo?.music_assistant?.available?this._tab("mymusic","mdi:bookshelf","My Music"):""}</nav></ha-card>`;
     const mainScroll=this.shadowRoot.querySelector(".viewscroll");
     if(mainScroll) mainScroll.scrollTop=this._scrollTop[this._view]||0;
     if(mainScroll && this._view==="music") mainScroll.addEventListener("scroll",()=>{if(this._maMenu!==null){this._maMenu=null;this.shadowRoot.querySelector(".maactionmenu")?.remove();}},{passive:true});
     const pickerScroll=this.shadowRoot.querySelector("#playerlist");
     if(pickerScroll) pickerScroll.scrollTop=this._pickerScrollTop[this._view]||0;
-    this.shadowRoot.querySelectorAll("[data-view]").forEach(el=>el.onclick=()=>{this._view=el.dataset.view;this._render();if(this._view==="queue")this._loadQueue();});
+    this.shadowRoot.querySelectorAll("[data-view]").forEach(el=>el.onclick=()=>{this._view=el.dataset.view;this._render();if(this._view==="queue")this._loadQueue();if(this._view==="mymusic"&&!this._myMusic)this._loadMyMusic();});
     this.shadowRoot.querySelector("#playerpick")?.addEventListener("click",()=>{this._pickerOpen=!this._pickerOpen;this._render();});
     this.shadowRoot.querySelector("#nowmore")?.addEventListener("click",e=>{e.stopPropagation();this._nowMenuOpen=!this._nowMenuOpen;this._render();});
     this.shadowRoot.querySelector("#openma")?.addEventListener("click",e=>{e.stopPropagation();this._nowMenuOpen=false;this._openMusicAssistant();});
@@ -310,6 +356,39 @@ class SonosRemoteCard extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-ma-action]").forEach(el=>el.onclick=async e=>{e.stopPropagation();const action=el.dataset.maAction;try{await this._hass.callWS({type:"sonos_remote/play",sonos_entity_id:this._selected,media_id:el.dataset.maUri,media_type:el.dataset.maType,enqueue:action==="play"?"replace":action});this._maMenu=null;this._queue=null;this._queuePlayer=null;if(action==="play"){this._view="now";this._render();}else{this._render();}}catch(err){this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:err?.message||"Unable to update queue"},bubbles:true,composed:true}));}});
     this.shadowRoot.querySelectorAll("[data-recent-uri]").forEach(el=>el.onclick=async()=>{try{await this._hass.callWS({type:"sonos_remote/play",sonos_entity_id:this._selected,media_id:el.dataset.recentUri,media_type:el.dataset.recentType,enqueue:"replace"});this._view="now";this._render();}catch(e){this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:e?.message||"Unable to play this recently played item"},bubbles:true,composed:true}));}});
     this.shadowRoot.querySelectorAll("[data-favorite]").forEach(el=>el.onclick=async()=>{try{await this._hass.callService("media_player","play_media",{entity_id:this._selected,media_content_type:"favorite_item_id",media_content_id:el.dataset.favorite});this._view="now";this._render();}catch(e){this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:e?.message||"Unable to play this Sonos Favorite"},bubbles:true,composed:true}));}});
+    this.shadowRoot.querySelector("#mymusicback")?.addEventListener("click",()=>{
+      const prev=this._myMusicStack.pop();
+      if(prev){this._myMusic=prev.data;this._render();}
+      else this._loadMyMusic();
+    });
+    this.shadowRoot.querySelectorAll("[data-browse-open]").forEach(el=>el.onclick=async()=>{
+      const item=(this._myMusic?.items||[])[Number(el.dataset.browseIndex)];
+      if(!item)return;
+      if(el.dataset.browseOpen==="1"){
+        await this._loadMyMusic(el.dataset.browsePath,true);
+        return;
+      }
+      const uri=item.uri||item.media_content_id||item.path||"";
+      if(!uri)return;
+      try{
+        await this._hass.callWS({type:"sonos_remote/play",sonos_entity_id:this._selected,media_id:uri,media_type:this._browseType(item),enqueue:"replace"});
+        this._view="now";this._render();
+      }catch(e){this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:e?.message||"Unable to play this Music Assistant item"},bubbles:true,composed:true}));}
+    });
+    this.shadowRoot.querySelectorAll("[data-browse-options]").forEach(el=>el.onclick=e=>{e.stopPropagation();const key=`browse:${el.dataset.browseOptions}`;this._maMenu=this._maMenu===key?null:key;this._render();});
+    this.shadowRoot.querySelectorAll("[data-browse-action]").forEach(el=>el.onclick=async e=>{
+      e.stopPropagation();
+      const item=(this._myMusic?.items||[])[Number(el.dataset.browseIndex)];
+      if(!item)return;
+      const uri=item.uri||item.media_content_id||item.path||"";
+      const action=el.dataset.browseAction;
+      try{
+        await this._hass.callWS({type:"sonos_remote/play",sonos_entity_id:this._selected,media_id:uri,media_type:this._browseType(item),enqueue:action==="play"?"replace":action});
+        this._maMenu=null;this._queue=null;this._queuePlayer=null;
+        if(action==="play")this._view="now";
+        this._render();
+      }catch(err){this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:err?.message||"Unable to update queue"},bubbles:true,composed:true}));}
+    });
     const musicSearch=this.shadowRoot.querySelector("#musicsearch");
     musicSearch?.addEventListener("input",e=>{this._lastSearch=e.target.value;});
     musicSearch?.addEventListener("keydown",e=>{
@@ -380,4 +459,4 @@ class SonosRemoteCard extends HTMLElement {
 if(!customElements.get("sonos-remote-card")) customElements.define("sonos-remote-card",SonosRemoteCard);
 window.customCards=window.customCards||[];
 window.customCards.push({type:"sonos-remote-card",name:"Sonos Remote",description:"Mobile-first Sonos remote for Home Assistant."});
-console.info("%c SONOS REMOTE %c v0.4.6 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
+console.info("%c SONOS REMOTE %c v0.5.0 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
