@@ -1,7 +1,7 @@
 {
   "domain": "sonos_remote",
   "name": "Sonos Remote",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "documentation": "https://github.com/thomasny9/ha-sonos-remote",
   "issue_tracker": "https://github.com/thomasny9/ha-sonos-remote/issues",
   "dependencies": ["sonos"],
