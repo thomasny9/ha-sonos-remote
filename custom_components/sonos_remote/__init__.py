@@ -250,21 +250,46 @@ async def websocket_sonos_remote_play(hass, connection, msg):
 @websocket_api.async_response
 async def websocket_sonos_remote_queue(hass, connection, msg):
     ma_entity, mass, queue = await _queue_context(hass, msg["sonos_entity_id"])
-    if ma_entity is None or mass is None:
-        connection.send_error(msg["id"], "music_assistant_player_not_found", "No unique Music Assistant player matches the selected Sonos room")
+    if ma_entity is not None and mass is not None:
+        if queue is None:
+            connection.send_result(msg["id"], {"available": True, "source": "music_assistant", "items": [], "current_index": None})
+            return
+        items = await mass.player_queues.get_queue_items(queue.queue_id, limit=msg["limit"])
+        connection.send_result(
+            msg["id"],
+            {
+                "available": True,
+                "source": "music_assistant",
+                "queue_id": queue.queue_id,
+                "current_index": queue.current_index,
+                "items": [item.to_dict() for item in items],
+            },
+        )
         return
-    if queue is None:
-        connection.send_result(msg["id"], {"available": True, "items": [], "current_index": None})
+
+    # Native Sonos fallback. Home Assistant's Sonos integration exposes its
+    # local queue even when Music Assistant is not installed.
+    if not hass.services.has_service("sonos", "get_queue"):
+        connection.send_error(msg["id"], "queue_unavailable", "Queue management is not available")
         return
-    items = await mass.player_queues.get_queue_items(queue.queue_id, limit=msg["limit"])
+    response = await hass.services.async_call(
+        "sonos",
+        "get_queue",
+        {},
+        target={"entity_id": msg["sonos_entity_id"]},
+        blocking=True,
+        return_response=True,
+    )
+    items = list((response or {}).get(msg["sonos_entity_id"], []))[: msg["limit"]]
+    state = hass.states.get(msg["sonos_entity_id"])
+    current_id = state.attributes.get("media_content_id") if state else None
+    current_index = next(
+        (idx for idx, item in enumerate(items) if current_id and item.get("media_content_id") == current_id),
+        None,
+    )
     connection.send_result(
         msg["id"],
-        {
-            "available": True,
-            "queue_id": queue.queue_id,
-            "current_index": queue.current_index,
-            "items": [item.to_dict() for item in items],
-        },
+        {"available": True, "source": "sonos", "items": items, "current_index": current_index},
     )
 
 
@@ -280,22 +305,49 @@ async def websocket_sonos_remote_queue(hass, connection, msg):
 @websocket_api.async_response
 async def websocket_sonos_remote_queue_action(hass, connection, msg):
     ma_entity, mass, queue = await _queue_context(hass, msg["sonos_entity_id"])
-    if ma_entity is None or mass is None or queue is None:
-        connection.send_error(msg["id"], "queue_unavailable", "No active Music Assistant queue is available for the selected Sonos room")
-        return
     action = msg["action"]
-    if action == "clear":
-        await mass.player_queues.clear(queue.queue_id)
-    elif action == "play":
-        target = msg.get("item_id") if msg.get("item_id") is not None else msg.get("index")
-        if target is None:
-            connection.send_error(msg["id"], "queue_item_required", "Queue item is required")
-            return
-        await mass.player_queues.play_index(queue.queue_id, target)
+    if ma_entity is not None and mass is not None and queue is not None:
+        if action == "clear":
+            await mass.player_queues.clear(queue.queue_id)
+        elif action == "play":
+            target = msg.get("item_id") if msg.get("item_id") is not None else msg.get("index")
+            if target is None:
+                connection.send_error(msg["id"], "queue_item_required", "Queue item is required")
+                return
+            await mass.player_queues.play_index(queue.queue_id, target)
+        elif action == "remove":
+            target = msg.get("item_id") if msg.get("item_id") is not None else msg.get("index")
+            if target is None:
+                connection.send_error(msg["id"], "queue_item_required", "Queue item is required")
+                return
+            await mass.player_queues.delete_item(queue.queue_id, target)
+        connection.send_result(msg["id"], {"ok": True, "source": "music_assistant"})
+        return
+
+    # Native Sonos queue actions use zero-based queue positions.
+    index = msg.get("index")
+    if action in ("play", "remove") and index is None:
+        connection.send_error(msg["id"], "queue_item_required", "Queue position is required")
+        return
+    if action == "play":
+        await hass.services.async_call(
+            "sonos", "play_queue", {"queue_position": index},
+            target={"entity_id": msg["sonos_entity_id"]}, blocking=True,
+        )
     elif action == "remove":
-        target = msg.get("item_id") if msg.get("item_id") is not None else msg.get("index")
-        if target is None:
-            connection.send_error(msg["id"], "queue_item_required", "Queue item is required")
-            return
-        await mass.player_queues.delete_item(queue.queue_id, target)
-    connection.send_result(msg["id"], {"ok": True})
+        await hass.services.async_call(
+            "sonos", "remove_from_queue", {"queue_position": index},
+            target={"entity_id": msg["sonos_entity_id"]}, blocking=True,
+        )
+    elif action == "clear":
+        response = await hass.services.async_call(
+            "sonos", "get_queue", {},
+            target={"entity_id": msg["sonos_entity_id"]}, blocking=True, return_response=True,
+        )
+        items = list((response or {}).get(msg["sonos_entity_id"], []))
+        for queue_position in range(len(items) - 1, -1, -1):
+            await hass.services.async_call(
+                "sonos", "remove_from_queue", {"queue_position": queue_position},
+                target={"entity_id": msg["sonos_entity_id"]}, blocking=True,
+            )
+    connection.send_result(msg["id"], {"ok": True, "source": "sonos"})
