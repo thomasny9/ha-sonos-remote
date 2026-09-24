@@ -39,7 +39,11 @@ class SonosRemoteCard extends HTMLElement {
     // Keep the Music DOM stable for the entire time that view is open; searches,
     // category changes, player selection, and playback actions render explicitly.
     const interactingWithMusic=this._view==="music";
-    if(!interactingWithRooms && !interactingWithMusic && !interactingWithPicker) this._render();
+    // Queue is another long scrollable surface. Sonos/MA state ticks must not
+    // rebuild it while it is open or the scroll container jumps back to top.
+    // Explicit queue actions and room changes already refresh it themselves.
+    const interactingWithQueue=this._view==="queue";
+    if(!interactingWithRooms && !interactingWithMusic && !interactingWithQueue && !interactingWithPicker) this._render();
   }
   getCardSize() { return 8; }
   async _loadBackendInfo() {
