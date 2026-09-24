@@ -40,6 +40,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         websocket_api.async_register_command(hass, websocket_sonos_remote_search)
         websocket_api.async_register_command(hass, websocket_sonos_remote_play)
         websocket_api.async_register_command(hass, websocket_sonos_remote_recently_played)
+        websocket_api.async_register_command(hass, websocket_sonos_remote_browse)
         websocket_api.async_register_command(hass, websocket_sonos_remote_queue)
         websocket_api.async_register_command(hass, websocket_sonos_remote_queue_action)
         websocket_api.async_register_command(hass, websocket_sonos_remote_set_fixed_volume)
@@ -191,6 +192,37 @@ async def websocket_sonos_remote_recently_played(hass, connection, msg):
         )
     except Exception as err:  # MA API compatibility: fail quietly in optional feature
         connection.send_result(msg["id"], {"available": False, "items": [], "error": str(err)})
+
+
+@websocket_api.websocket_command(
+    {
+        "type": "sonos_remote/browse",
+        vol.Optional("path"): vol.Any(str, None),
+    }
+)
+@websocket_api.async_response
+async def websocket_sonos_remote_browse(hass, connection, msg):
+    """Browse the sources and folders exposed by Music Assistant."""
+    mass = _ma_client(hass)
+    if mass is None:
+        connection.send_error(
+            msg["id"],
+            "music_assistant_unavailable",
+            "Music Assistant integration is not available",
+        )
+        return
+    try:
+        items = await mass.music.browse(path=msg.get("path"))
+        connection.send_result(
+            msg["id"],
+            {
+                "available": True,
+                "path": msg.get("path"),
+                "items": [item.to_dict() for item in items],
+            },
+        )
+    except Exception as err:
+        connection.send_error(msg["id"], "music_assistant_browse_failed", str(err))
 
 
 @websocket_api.websocket_command({"type": "sonos_remote/info"})
