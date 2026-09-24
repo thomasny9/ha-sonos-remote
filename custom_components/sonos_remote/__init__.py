@@ -9,16 +9,8 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.storage import Store
 
 from .const import CARD_URL, DOMAIN, VERSION
-
-SETTINGS_STORE_VERSION = 1
-SETTINGS_STORE_KEY = f"{DOMAIN}.settings"
-
-
-def _settings_store(hass: HomeAssistant) -> Store:
-    return Store(hass, SETTINGS_STORE_VERSION, SETTINGS_STORE_KEY)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -41,8 +33,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         websocket_api.async_register_command(hass, websocket_sonos_remote_play)
         websocket_api.async_register_command(hass, websocket_sonos_remote_queue)
         websocket_api.async_register_command(hass, websocket_sonos_remote_queue_action)
-        websocket_api.async_register_command(hass, websocket_sonos_remote_settings)
-        websocket_api.async_register_command(hass, websocket_sonos_remote_settings_set)
         domain_data["ws_registered"] = True
 
     frontend = hass.data.get("frontend")
@@ -142,34 +132,6 @@ async def _queue_context(hass: HomeAssistant, sonos_entity_id: str):
         return ma_entity, None, None
     queue = await mass.player_queues.get_active_queue(player_id)
     return ma_entity, mass, queue
-
-
-@websocket_api.websocket_command({"type": "sonos_remote/settings"})
-@websocket_api.async_response
-async def websocket_sonos_remote_settings(hass, connection, msg):
-    data = await _settings_store(hass).async_load() or {}
-    connection.send_result(msg["id"], data)
-
-
-@websocket_api.websocket_command(
-    {
-        "type": "sonos_remote/settings_set",
-        vol.Required("entity_id"): str,
-        vol.Required("enabled"): bool,
-        vol.Required("start_volume"): vol.All(int, vol.Range(min=0, max=100)),
-    }
-)
-@websocket_api.async_response
-async def websocket_sonos_remote_settings_set(hass, connection, msg):
-    store = _settings_store(hass)
-    data = await store.async_load() or {}
-    rooms = data.setdefault("rooms", {})
-    rooms[msg["entity_id"]] = {
-        "start_volume_enabled": msg["enabled"],
-        "start_volume": msg["start_volume"],
-    }
-    await store.async_save(data)
-    connection.send_result(msg["id"], rooms[msg["entity_id"]])
 
 
 @websocket_api.websocket_command({"type": "sonos_remote/info"})
