@@ -25,9 +25,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     frontend_path = Path(__file__).parent / "www" / "sonos-remote-card.js"
     domain_data = hass.data.setdefault(DOMAIN, {})
 
-    if "fixed_volume_players" not in domain_data:
+    if "fixed_volume_players" not in domain_data or "hidden_music_services" not in domain_data:
         stored = await Store(hass, STORAGE_VERSION, STORAGE_KEY).async_load() or {}
-        domain_data["fixed_volume_players"] = set(stored.get("fixed_volume_players", []))
+        domain_data.setdefault("fixed_volume_players", set(stored.get("fixed_volume_players", [])))
+        domain_data.setdefault("hidden_music_services", set(stored.get("hidden_music_services", [])))
 
     if not domain_data.get("static_registered"):
         await hass.http.async_register_static_paths(
@@ -44,6 +45,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         websocket_api.async_register_command(hass, websocket_sonos_remote_queue)
         websocket_api.async_register_command(hass, websocket_sonos_remote_queue_action)
         websocket_api.async_register_command(hass, websocket_sonos_remote_set_fixed_volume)
+        websocket_api.async_register_command(hass, websocket_sonos_remote_set_music_service_visible)
         domain_data["ws_registered"] = True
 
     frontend = hass.data.get("frontend")
@@ -92,10 +94,40 @@ async def websocket_sonos_remote_set_fixed_volume(hass, connection, msg):
         fixed.add(entity_id)
     else:
         fixed.discard(entity_id)
-    await Store(hass, STORAGE_VERSION, STORAGE_KEY).async_save(
-        {"fixed_volume_players": sorted(fixed)}
-    )
+    await _save_settings(hass)
     connection.send_result(msg["id"], {"ok": True, "fixed_volume_players": sorted(fixed)})
+
+
+async def _save_settings(hass: HomeAssistant) -> None:
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    await Store(hass, STORAGE_VERSION, STORAGE_KEY).async_save(
+        {
+            "fixed_volume_players": sorted(domain_data.get("fixed_volume_players", set())),
+            "hidden_music_services": sorted(domain_data.get("hidden_music_services", set())),
+        }
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        "type": "sonos_remote/set_music_service_visible",
+        vol.Required("service_id"): str,
+        vol.Required("visible"): bool,
+    }
+)
+@websocket_api.async_response
+async def websocket_sonos_remote_set_music_service_visible(hass, connection, msg):
+    hidden = hass.data.setdefault(DOMAIN, {}).setdefault("hidden_music_services", set())
+    service_id = msg["service_id"]
+    if msg["visible"]:
+        hidden.discard(service_id)
+    else:
+        hidden.add(service_id)
+    await _save_settings(hass)
+    connection.send_result(
+        msg["id"],
+        {"ok": True, "hidden_music_services": sorted(hidden)},
+    )
 
 
 def _ma_entry(hass: HomeAssistant):
@@ -252,6 +284,7 @@ async def websocket_sonos_remote_info(hass, connection, msg):
             "version": VERSION,
             "players": players,
             "fixed_volume_players": sorted(hass.data.get(DOMAIN, {}).get("fixed_volume_players", set())),
+            "hidden_music_services": sorted(hass.data.get(DOMAIN, {}).get("hidden_music_services", set())),
             "music_assistant": {
                 "available": ma_entry is not None
                 and hass.services.has_service("music_assistant", "search"),
