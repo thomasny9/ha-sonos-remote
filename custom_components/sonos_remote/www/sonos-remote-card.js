@@ -245,7 +245,7 @@ class SonosRemoteCard extends HTMLElement {
       el.addEventListener("change",e=>{clearTimeout(this._volumeSendTimer);this._hass.callService("media_player","volume_set",{entity_id:e.target.dataset.roomvol,volume_level:Number(e.target.value)/100});});
     });
     this.shadowRoot.querySelectorAll("[data-room]").forEach(el=>el.onclick=()=>{const id=el.dataset.room;this._selectedRooms.has(id)?this._selectedRooms.delete(id):this._selectedRooms.add(id);const on=this._selectedRooms.has(id);el.classList.toggle("on",on);el.textContent=on?"✓":"";const apply=this.shadowRoot.querySelector("#apply");if(apply){const same=!this._selectedRooms.size||this._sameMembers([...this._selectedRooms],this._currentGroup());apply.disabled=same;apply.textContent=this._groupActionLabel();}});
-    this.shadowRoot.querySelectorAll("[data-favorite]").forEach(el=>el.onclick=()=>this._hass.callService("media_player","play_media",{entity_id:this._selected,media_content_type:"favorite_item_id",media_content_id:el.dataset.favorite}));
+    this.shadowRoot.querySelectorAll("[data-favorite]").forEach(el=>el.onclick=async()=>{try{await this._hass.callService("media_player","play_media",{entity_id:this._selected,media_content_type:"favorite_item_id",media_content_id:el.dataset.favorite});this._view="now";this._render();}catch(e){this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:e?.message||"Unable to play this Sonos Favorite"},bubbles:true,composed:true}));}});
     const musicSearch=this.shadowRoot.querySelector("#musicsearch");
     musicSearch?.addEventListener("input",e=>{this._lastSearch=e.target.value;});
     musicSearch?.addEventListener("keydown",e=>{
