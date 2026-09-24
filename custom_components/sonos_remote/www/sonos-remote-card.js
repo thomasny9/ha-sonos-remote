@@ -24,7 +24,12 @@ class SonosRemoteCard extends HTMLElement {
     if (!this._selectedRooms.size) (this._hass.states[this._selected]?.attributes?.group_members || [this._selected]).filter(Boolean).forEach(id => this._selectedRooms.add(id));
     const active=this.shadowRoot?.activeElement;
     const interactingWithPicker=this._pickerOpen && !!this.shadowRoot?.querySelector("#playerlist.open");
-    if(!interactingWithPicker && !(this._view==="music" && active?.id==="musicsearch")) this._render();
+    // Rooms is a long interactive selection surface. Rebuilding it for every
+    // Sonos state tick destroys the scroll container and causes iOS/HA to jump.
+    // Keep its DOM stable; room controls update themselves in place and Apply
+    // performs the next full render after the grouping action completes.
+    const interactingWithRooms=this._view==="rooms";
+    if(!interactingWithRooms && !interactingWithPicker && !(this._view==="music" && active?.id==="musicsearch")) this._render();
   }
   getCardSize() { return 8; }
   async _loadBackendInfo() {
