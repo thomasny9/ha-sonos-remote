@@ -4,7 +4,7 @@ Sonos Remote is a mobile-first Home Assistant remote with a Lovelace frontend an
 
 The Now Playing header includes quick access to the Music Assistant UI and a persistent **Fixed-volume Sonos** selector. Mark any Sonos entity that uses fixed line-out so the card hides its volume control while leaving normal Sonos speakers fully adjustable.
 
-## v0.4.6
+## v0.5.0
 
 This first version establishes the combined architecture.
 
@@ -21,7 +21,7 @@ This first version establishes the combined architecture.
 - Play/pause, previous and next
 - Volume control
 - Current group display
-- Four internal views: Now Playing, Rooms, Music and Queue
+- Four standard internal views: Now Playing, Rooms, Music and Queue\n- A fifth **My Music** tab appears automatically when Music Assistant is configured\n- My Music browses MA music sources and their folders in-place, with Play Now / Play Next / Add to Queue actions
 - Home Assistant theme support
 - Rooms, Music and Queue are the next implementation stages
 
