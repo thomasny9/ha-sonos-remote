@@ -30,7 +30,12 @@ class SonosRemoteCard extends HTMLElement {
     // Keep its DOM stable; room controls update themselves in place and Apply
     // performs the next full render after the grouping action completes.
     const interactingWithRooms=this._view==="rooms";
-    if(!interactingWithRooms && !interactingWithPicker && !(this._view==="music" && active?.id==="musicsearch")) this._render();
+    // Music is also a long scrollable selection surface. Rebuilding it for
+    // routine HA/Sonos state ticks resets its scroll container just like Rooms.
+    // Keep the Music DOM stable for the entire time that view is open; searches,
+    // category changes, player selection, and playback actions render explicitly.
+    const interactingWithMusic=this._view==="music";
+    if(!interactingWithRooms && !interactingWithMusic && !interactingWithPicker) this._render();
   }
   getCardSize() { return 8; }
   async _loadBackendInfo() {
