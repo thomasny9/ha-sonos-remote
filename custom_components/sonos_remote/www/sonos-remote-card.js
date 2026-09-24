@@ -137,9 +137,10 @@ class SonosRemoteCard extends HTMLElement {
     return `<div class="fixedsettings"><div class="fixedtitle"><b>Fixed-volume Sonos</b><button id="closefixed"><ha-icon icon="mdi:close"></ha-icon></button></div><small>Mark Sonos outputs whose volume should not be controlled from this card.</small>${(this._players||[]).map(p=>`<label class="fixedrow"><span>${this._esc(p.attributes?.friendly_name||p.entity_id)}</span><input type="checkbox" data-fixed-player="${p.entity_id}" ${this._isFixedVolume(p)?"checked":""}></label>`).join("")}</div>`;
   }
   _openMusicAssistant() {
-    // Use Home Assistant's normal frontend navigation event. The MA add-on
-    // ingress panel is mounted at this path by Supervisor.
-    const path = "/d5369777_music_assistant/ingress";
+    // Music Assistant is exposed by Home Assistant at /app/<addon-slug>.
+    // Keep navigation origin-relative so it works with local HA URLs, Nabu Casa,
+    // and the Companion App without hard-coding a host.
+    const path = "/app/d5369777_music_assistant";
     history.pushState(null, "", path);
     window.dispatchEvent(new CustomEvent("location-changed", {
       detail: { replace: false },
@@ -379,4 +380,4 @@ class SonosRemoteCard extends HTMLElement {
 if(!customElements.get("sonos-remote-card")) customElements.define("sonos-remote-card",SonosRemoteCard);
 window.customCards=window.customCards||[];
 window.customCards.push({type:"sonos-remote-card",name:"Sonos Remote",description:"Mobile-first Sonos remote for Home Assistant."});
-console.info("%c SONOS REMOTE %c v0.4.5 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
+console.info("%c SONOS REMOTE %c v0.4.6 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
