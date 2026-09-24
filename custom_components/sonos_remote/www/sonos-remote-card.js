@@ -137,6 +137,8 @@ class SonosRemoteCard extends HTMLElement {
     return String(raw).toLowerCase().replace("mediatype.","");
   }
   _browsePath(item) { return item.path||item.uri||""; }
+  _isMABackItem(item) { return (item.name===".." || item.item_id==="back") && !!this._myMusicStack.length; }
+  _isMARootItem(item) { return this._browsePath(item)==="root" || (item.item_id==="root" && item.provider==="library"); }
   _musicServiceId(item) { return this._browsePath(item)||item.provider_instance||item.provider||item.name||item.title||""; }
   _musicServiceVisible(item) { return !(this._backendInfo?.hidden_music_services||[]).includes(this._musicServiceId(item)); }
   _browsePlayable(item) {
@@ -147,6 +149,10 @@ class SonosRemoteCard extends HTMLElement {
     if(this._myMusicLoading && !this._myMusic) return `<div class="mahint">Loading My Music…</div>`;
     if(this._myMusic?.error) return `<div class="mahint">${this._esc(this._myMusic.error)}</div>`;
     let items=this._myMusic?.items||[];
+    // MA prepends synthetic ".." navigation rows on non-root browse calls.
+    // The card already provides Back/Home controls, so suppress those rows to avoid
+    // sending MA's "root" or parent paths through a provider as invalid subpaths.
+    items=items.filter(item=>!this._isMABackItem(item) && !this._isMARootItem(item));
     if(!this._myMusic?.path && !this._myMusicStack.length) items=items.filter(item=>this._musicServiceVisible(item));
     if(!items.length) return `<div class="mahint">${this._myMusicLoading?"Loading…":"No browsable Music Assistant sources found."}</div>`;
     const iconFor=t=>({artist:"mdi:account-music",album:"mdi:album",track:"mdi:music-note",playlist:"mdi:playlist-music",radio:"mdi:radio",podcast:"mdi:podcast",podcast_episode:"mdi:podcast",audiobook:"mdi:book-music"}[t]||"mdi:folder-music");
@@ -495,4 +501,4 @@ class SonosRemoteCard extends HTMLElement {
 if(!customElements.get("sonos-remote-card")) customElements.define("sonos-remote-card",SonosRemoteCard);
 window.customCards=window.customCards||[];
 window.customCards.push({type:"sonos-remote-card",name:"Sonos Remote",description:"Mobile-first Sonos remote for Home Assistant."});
-console.info("%c SONOS REMOTE %c v0.5.2 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
+console.info("%c SONOS REMOTE %c v0.5.3 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
