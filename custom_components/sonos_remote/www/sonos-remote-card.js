@@ -13,12 +13,16 @@ class SonosRemoteCard extends HTMLElement {
     this._queuePlayer = this._queuePlayer || null;
     this._progressTimer = null;
     this._backendInfo = this._backendInfo || null;
+    this._settings = this._settings || {rooms:{}};
+    this._settingsOpen = false;
+    this._volumeSendTimer = null;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
   }
   set hass(hass) {
     this._hass = hass;
     this._players = this._backendInfo?.players?.map(p=>hass.states[p.entity_id]).filter(Boolean) || this._discoverPlayers(hass);
     if (!this._backendInfo && !this._infoLoading) this._loadBackendInfo();
+    if (!this._settingsLoaded && !this._settingsLoading) this._loadSettings();
     this._selected = this._selected && hass.states[this._selected]
       ? this._selected : (this.config.default_player || this._players[0]?.entity_id);
     if (!this._selectedRooms.size) (this._hass.states[this._selected]?.attributes?.group_members || [this._selected]).filter(Boolean).forEach(id => this._selectedRooms.add(id));
@@ -41,6 +45,25 @@ class SonosRemoteCard extends HTMLElement {
     } catch(e) { console.warn("Sonos Remote backend info unavailable",e); }
     finally { this._infoLoading=false; this._render(); }
   }
+  async _loadSettings() {
+    if(!this._hass || this._settingsLoading) return;
+    this._settingsLoading=true;
+    try { this._settings=await this._hass.callWS({type:"sonos_remote/settings"})||{rooms:{}}; this._settingsLoaded=true; }
+    catch(e) { console.warn("Sonos Remote settings unavailable",e); }
+    finally { this._settingsLoading=false; if(this._view==="now") this._render(); }
+  }
+  _roomSetting(id) { return this._settings?.rooms?.[id]||{start_volume_enabled:false,start_volume:25}; }
+  async _saveRoomSetting(id, enabled, startVolume) {
+    const value=Math.max(0,Math.min(100,Math.round(Number(startVolume)||0)));
+    const saved=await this._hass.callWS({type:"sonos_remote/settings_set",entity_id:id,enabled:!!enabled,start_volume:value});
+    this._settings.rooms=this._settings.rooms||{}; this._settings.rooms[id]=saved;
+  }
+  async _applyStartVolume(id) {
+    const st=this._hass.states[id], cfg=this._roomSetting(id);
+    if(cfg.start_volume_enabled && st && st.state!=="playing" && st.state!=="paused")
+      await this._hass.callService("media_player","volume_set",{entity_id:id,volume_level:Number(cfg.start_volume)/100});
+  }
+  async _startPlayback(service,data={}) { await this._applyStartVolume(this._selected); return this._call(service,data); }
   async _searchMA(query, category=null) {
     query=(query||"").trim();
     if (!query || this._maLoading) return;
@@ -190,7 +213,7 @@ class SonosRemoteCard extends HTMLElement {
     <style>
       :host{display:block} ha-card{height:min(760px,calc(100dvh - 96px));min-height:620px;overflow:hidden;border-radius:22px;background:#111214;color:#f5f5f5;border:0;box-shadow:0 14px 40px rgba(0,0,0,.28);display:flex;flex-direction:column}.viewscroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#4a4d52 transparent}.viewscroll.nowview{overflow-y:hidden}
       .wrap{padding:12px 18px 4px}.top{display:flex;justify-content:center;align-items:center;margin-bottom:8px}.playerpick{display:flex;align-items:center;justify-content:center;gap:5px;padding:5px 8px;margin:0;background:transparent;color:#f5f5f5;font-size:20px;font-weight:700}.playerpick span{max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.picker{display:none;margin:0 0 14px;padding:8px;border-radius:14px;background:#202124}.picker.open{display:block;max-height:240px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#4a4d52 transparent}.pickrow{display:flex;align-items:center;gap:9px;width:100%;padding:9px 10px;border-radius:10px;text-align:left;color:#f5f5f5}.pickrow.active{background:#303236}.pickrow span{flex:1}.art,.placeholder{aspect-ratio:1/1;width:min(100%,300px);margin:0 auto;border-radius:16px;background:#202124}
-      .art{object-fit:contain;display:block;background:#111214}.placeholder{display:grid;place-items:center;font-size:64px;opacity:.65}.meta{text-align:center}.progress{margin:8px 0 2px}.progress input{width:100%}.progress.live{margin:13px 0 7px}.liveline{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;color:#8f9297;font-size:10px;letter-spacing:.12em}.liveline span{height:1px;background:#3b3d41}.liveline b{font-weight:700}.times{display:flex;justify-content:space-between;color:#8f9297;font-size:11px}.topcopy{text-align:center;min-width:0}.eyebrow{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#8f9297;font-weight:700}
+      .art{object-fit:contain;display:block;background:#111214}.placeholder{display:grid;place-items:center;font-size:64px;opacity:.65}.meta{text-align:center}.progress{margin:8px 0 2px}.progress input{width:100%}.progress.live{margin:13px 0 7px}.liveline{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;color:#8f9297;font-size:10px;letter-spacing:.12em}.liveline span{height:1px;background:#3b3d41}.liveline b{font-weight:700}.times{display:flex;justify-content:space-between;color:#8f9297;font-size:11px}.topcopy{text-align:center;min-width:0}.top{position:relative}.more{position:absolute;right:0;top:0;width:42px;min-height:42px;display:grid;place-items:center;color:#a9acb1}.more ha-icon{--mdc-icon-size:24px}.settingssheet{position:absolute;z-index:20;right:18px;top:56px;width:min(320px,calc(100% - 36px));box-sizing:border-box;background:#202124;border:1px solid #34363a;border-radius:16px;padding:15px;box-shadow:0 16px 40px rgba(0,0,0,.45);text-align:left}.settingssheet h3{margin:0 0 3px;font-size:16px}.settingssheet .settingroom{font-size:12px;color:#8f9297;margin-bottom:14px}.settingline{display:flex;align-items:center;justify-content:space-between;gap:12px}.settingline b{font-size:14px}.switch{width:44px;height:26px;min-height:26px;border-radius:13px;background:#4a4d52;padding:3px;box-sizing:border-box}.switch:after{content:"";display:block;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .15s}.switch.on{background:var(--primary-color)}.switch.on:after{transform:translateX(18px)}.startvol{display:grid;grid-template-columns:1fr 38px;gap:9px;align-items:center;margin-top:12px}.startvol input{width:100%}.startvol span{text-align:right;font-size:12px;color:#a9acb1}.startvol.disabled{opacity:.4;pointer-events:none}.eyebrow{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#8f9297;font-weight:700}
       h2{margin:10px 0 3px;font-size:24px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .artist,.album{color:#a9acb1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.album{font-size:13px;margin-top:3px}
       .controls{display:grid;grid-template-columns:1fr 1fr 1.2fr 1fr 1fr;align-items:center;margin:5px 18px 2px}
@@ -202,7 +225,7 @@ class SonosRemoteCard extends HTMLElement {
       .rooms{padding:18px;min-height:100%;box-sizing:border-box}.roomhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.roomhead h1{margin:0;font-size:28px}.roomsummary{font-size:12px;color:#8f9297;margin:-6px 0 14px}.roomlist{border-top:1px solid #292b2f}.room{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:center;padding:10px 2px;border-bottom:1px solid #292b2f;background:transparent}.check{width:26px;height:26px;min-height:26px;border:1px solid #62656a;border-radius:50%;display:grid;place-items:center}.check.on{background:#f5f5f5;border-color:#f5f5f5;color:#111214}.roommain{min-width:0}.roomline{display:flex;align-items:center;gap:8px}.roomname{font-weight:650;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.roomstate{font-size:11px;color:#8f9297}.roomsub{font-size:12px;color:#8f9297;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}.roomvol{display:grid;grid-template-columns:20px 1fr 30px;gap:7px;align-items:center;margin-top:7px}.roomvol input{width:100%;margin:0}.roomvol span{text-align:right;font-size:11px;color:#8f9297}.roomvol ha-icon{--mdc-icon-size:17px;color:#8f9297}.applybar{position:sticky;bottom:0;padding:12px 0 2px;background:linear-gradient(transparent,#111214 22%)}.apply{width:100%;height:46px;border-radius:23px!important;background:#f5f5f5!important;color:#111214!important;font-weight:700;margin-top:8px}.apply:disabled{opacity:.35;cursor:default}.roomstate:not(:empty){padding:2px 6px;border-radius:8px;background:#25272a}.pickrow small{display:block;color:#8f9297;font-size:11px;margin-top:2px}.pickrow b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .music{padding:18px;min-height:100%;box-sizing:border-box}.music .roomhead{margin-bottom:7px}.music .roomhead h1{color:#f5f5f5}.musicdestlabel{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8f9297;font-weight:700}.music .playerpick{justify-content:flex-start;padding:4px 0 9px;font-size:17px;max-width:100%}.music .picker{margin-bottom:12px}.sectionrow{display:flex;align-items:center;justify-content:space-between;margin-top:18px}.sectionrow .sectiontitle{margin:0 0 10px}.seeall,.maback{min-height:36px;color:#a9acb1;font-size:13px;padding:0 2px}.maback{display:flex;align-items:center;gap:2px;margin:0 0 6px}.maback ha-icon{--mdc-icon-size:18px}.search{display:grid;grid-template-columns:24px 1fr;gap:8px;align-items:center;background:#202124;border:1px solid #2d2f33;border-radius:14px;padding:10px 13px;margin-bottom:16px;color:#a9acb1}.search input{border:0;outline:0;background:transparent;color:#f5f5f5;font:inherit;width:100%}.search input::placeholder{color:#777b81}.sectiontitle{font-size:17px;font-weight:700;margin:18px 0 10px;color:#f5f5f5}.fav{display:grid;grid-template-columns:48px minmax(0,1fr) 28px;gap:10px;align-items:center;width:100%;padding:9px;border-radius:12px;background:#202124;color:#f5f5f5;margin-bottom:7px;text-align:left}.favart{width:48px;height:48px;border-radius:9px;background:#2b2d31;display:grid;place-items:center;color:#d7d8da}.favname{display:block;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.favsub{display:block;font-size:12px;color:#8f9297;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mahint{padding:12px 4px;color:#8f9297;font-size:13px}.maitem{text-align:left;width:100%}.queue{padding:18px;min-height:100%;box-sizing:border-box}.queue .roomhead{margin-bottom:4px}.queue .playerpick{justify-content:flex-start;padding:4px 0 10px;font-size:17px;max-width:100%}.queue .picker{margin-bottom:12px}.queuehead{display:flex;align-items:center;justify-content:space-between}.clearq{min-height:38px;color:#a9acb1;font-size:13px;padding:0 2px}.qitem{display:grid;grid-template-columns:minmax(0,1fr) 42px;align-items:center;border-bottom:1px solid #292b2f}.qitem.current{background:#1d1f22;border-radius:10px}.qplay{display:grid;grid-template-columns:34px minmax(0,1fr);gap:8px;align-items:center;text-align:left;padding:8px 2px;min-width:0}.qnum{display:grid;place-items:center;color:#8f9297;font-size:12px}.qnum ha-icon{--mdc-icon-size:18px;color:#f5f5f5}.qcopy{min-width:0}.qcopy b,.qcopy small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qcopy b{font-size:14px}.qcopy small{font-size:12px;color:#8f9297;margin-top:2px}.qremove{min-height:42px;color:#777b81}.qremove ha-icon{--mdc-icon-size:18px}.queueempty{min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#8f9297;gap:8px}.queueempty ha-icon{--mdc-icon-size:42px}.queueempty b{color:#f5f5f5}.queueempty span{font-size:13px;max-width:240px}.stub{min-height:100%;box-sizing:border-box;padding:20px}.stub h2{margin-top:0}@media(min-width:600px){ha-card{max-width:430px;margin:auto}}
     </style><ha-card>
-    <main class="viewscroll ${this._view==="now"?"nowview":""}">${this._view==="now"?`<div class="wrap"><div class="top"><div class="topcopy"><div class="eyebrow">Now Playing</div><button class="playerpick" id="playerpick"><span>${this._esc(a.friendly_name||"Select Sonos")}</span><ha-icon icon="mdi:chevron-down"></ha-icon></button></div></div><div class="picker ${this._pickerOpen?"open":""}" id="playerlist">${this._playerChoices().map(p=>`<button class="pickrow ${p.id===this._selected?"active":""}" data-select-player="${p.id}"><ha-icon icon="${p.icon}"></ha-icon><span><b>${this._esc(p.label)}</b><small>${this._esc(p.sub)}</small></span>${p.id===this._selected?`<ha-icon icon="mdi:check"></ha-icon>`:""}</button>`).join("")}</div>${art?`<img class="art" src="${art}" alt="">`:`<div class="placeholder">♫</div>`}<div class="meta"><h2>${this._esc(title)}</h2><div class="artist">${this._esc(artist)}</div><div class="album">${this._esc(album)}</div><div class="progress ${duration?"":"live"}">${duration?`<input id="seek" type="range" min="0" max="100" value="${progress}"><div class="times"><span id="elapsed">${fmt(position)}</span><span>${fmt(duration)}</span></div>`:`<div class="liveline"><span></span><b>LIVE</b><span></span></div>`}</div></div></div>
+    <main class="viewscroll ${this._view==="now"?"nowview":""}">${this._view==="now"?`<div class="wrap"><div class="top"><div class="topcopy"><div class="eyebrow">Now Playing</div><button class="playerpick" id="playerpick"><span>${this._esc(a.friendly_name||"Select Sonos")}</span><ha-icon icon="mdi:chevron-down"></ha-icon></button></div>${(()=>{const c=this._roomSetting(this._selected);return `<button class="more" id="roommore" aria-label="Room settings"><ha-icon icon="mdi:dots-vertical"></ha-icon></button>${this._settingsOpen?`<div class="settingssheet"><h3>Room Settings</h3><div class="settingroom">${this._esc(a.friendly_name||this._selected||"Sonos")}</div><div class="settingline"><b>Use start volume</b><button class="switch ${c.start_volume_enabled?"on":""}" id="starttoggle" aria-label="Use start volume"></button></div><div class="startvol ${c.start_volume_enabled?"":"disabled"}"><input id="startvol" type="range" min="0" max="100" value="${c.start_volume}"><span id="startvolnum">${c.start_volume}%</span></div></div>`:""}`})()}</div><div class="picker ${this._pickerOpen?"open":""}" id="playerlist">${this._playerChoices().map(p=>`<button class="pickrow ${p.id===this._selected?"active":""}" data-select-player="${p.id}"><ha-icon icon="${p.icon}"></ha-icon><span><b>${this._esc(p.label)}</b><small>${this._esc(p.sub)}</small></span>${p.id===this._selected?`<ha-icon icon="mdi:check"></ha-icon>`:""}</button>`).join("")}</div>${art?`<img class="art" src="${art}" alt="">`:`<div class="placeholder">♫</div>`}<div class="meta"><h2>${this._esc(title)}</h2><div class="artist">${this._esc(artist)}</div><div class="album">${this._esc(album)}</div><div class="progress ${duration?"":"live"}">${duration?`<input id="seek" type="range" min="0" max="100" value="${progress}"><div class="times"><span id="elapsed">${fmt(position)}</span><span>${fmt(duration)}</span></div>`:`<div class="liveline"><span></span><b>LIVE</b><span></span></div>`}</div></div></div>
     <div class="controls"><button class="${a.shuffle?"activecmd":""}" data-action="shuffle"><ha-icon icon="mdi:shuffle-variant"></ha-icon></button><button class="skip" data-action="previous"><ha-icon icon="mdi:skip-previous"></ha-icon></button><button class="main" data-action="toggle"><ha-icon icon="${playing?"mdi:pause":"mdi:play"}"></ha-icon></button><button class="skip" data-action="next"><ha-icon icon="mdi:skip-next"></ha-icon></button><button class="${a.repeat&&a.repeat!=="off"?"activecmd":""}" data-action="repeat"><ha-icon icon="${a.repeat==="one"?"mdi:repeat-once":"mdi:repeat"}"></ha-icon></button></div>
     <div class="volume"><button data-action="mute"><ha-icon icon="${a.is_volume_muted?"mdi:volume-off":"mdi:volume-medium"}"></ha-icon></button><input id="vol" type="range" min="0" max="100" value="${volume}"><span>${volume}</span></div>
     <div class="group" data-view="rooms"><small>Playing in</small>${this._esc(rooms||"Select a room")} ›</div>`:
@@ -216,13 +239,15 @@ class SonosRemoteCard extends HTMLElement {
     this.shadowRoot.querySelector("#playerpick")?.addEventListener("click",()=>{this._pickerOpen=!this._pickerOpen;this._render();});
     this.shadowRoot.querySelector("#playerlist")?.addEventListener("scroll",e=>{this._pickerScrollTop[this._view]=e.currentTarget.scrollTop;},{passive:true});
     this.shadowRoot.querySelectorAll("[data-select-player]").forEach(el=>el.onclick=()=>{this._selected=el.dataset.selectPlayer;this._pickerOpen=false;this._pickerScrollTop[this._view]=0;if(this._view==="queue"){this._queue=null;this._queuePlayer=null;}const g=this._groups().find(x=>x.members.includes(this._selected));this._selectedRooms=new Set(g?.members||[this._selected]);this._render();if(this._view==="queue")this._loadQueue(true);});
-    this.shadowRoot.querySelector('[data-action="toggle"]')?.addEventListener("click",()=>this._call("media_play_pause"));
+    this.shadowRoot.querySelector('[data-action="toggle"]')?.addEventListener("click",()=>this._startPlayback("media_play_pause"));
     this.shadowRoot.querySelector('[data-action="previous"]')?.addEventListener("click",()=>this._call("media_previous_track"));
     this.shadowRoot.querySelector('[data-action="next"]')?.addEventListener("click",()=>this._call("media_next_track"));
     this.shadowRoot.querySelector('[data-action="shuffle"]')?.addEventListener("click",()=>this._call("shuffle_set",{shuffle:!a.shuffle}));
     this.shadowRoot.querySelector('[data-action="repeat"]')?.addEventListener("click",()=>{const next=a.repeat==="off"?"all":a.repeat==="all"?"one":"off";this._call("repeat_set",{repeat:next});});
     this.shadowRoot.querySelector('[data-action="mute"]')?.addEventListener("click",()=>this._call("volume_mute",{is_volume_muted:!a.is_volume_muted}));
-    this.shadowRoot.querySelector("#vol")?.addEventListener("change",e=>this._call("volume_set",{volume_level:Number(e.target.value)/100}));
+    const nowVol=this.shadowRoot.querySelector("#vol");
+    nowVol?.addEventListener("input",e=>{const n=e.target.nextElementSibling;if(n)n.textContent=e.target.value;});
+    nowVol?.addEventListener("change",e=>this._call("volume_set",{volume_level:Number(e.target.value)/100}));
     this.shadowRoot.querySelector("#seek")?.addEventListener("change",e=>{if(duration>0)this._call("media_seek",{seek_position:(Number(e.target.value)/100)*duration});});
     clearInterval(this._progressTimer);
     this._progressTimer=null;
@@ -237,9 +262,12 @@ class SonosRemoteCard extends HTMLElement {
         if(livePosition>=duration){clearInterval(this._progressTimer);this._progressTimer=null;}
       },1000);
     }
-    this.shadowRoot.querySelectorAll("[data-roomvol]").forEach(el=>el.addEventListener("change",e=>this._hass.callService("media_player","volume_set",{entity_id:e.target.dataset.roomvol,volume_level:Number(e.target.value)/100})));
+    this.shadowRoot.querySelectorAll("[data-roomvol]").forEach(el=>{
+      el.addEventListener("input",e=>{const n=e.target.nextElementSibling;if(n)n.textContent=e.target.value;clearTimeout(this._volumeSendTimer);const id=e.target.dataset.roomvol,v=Number(e.target.value)/100;this._volumeSendTimer=setTimeout(()=>this._hass.callService("media_player","volume_set",{entity_id:id,volume_level:v}),120);});
+      el.addEventListener("change",e=>{clearTimeout(this._volumeSendTimer);this._hass.callService("media_player","volume_set",{entity_id:e.target.dataset.roomvol,volume_level:Number(e.target.value)/100});});
+    });
     this.shadowRoot.querySelectorAll("[data-room]").forEach(el=>el.onclick=()=>{const id=el.dataset.room;this._selectedRooms.has(id)?this._selectedRooms.delete(id):this._selectedRooms.add(id);const on=this._selectedRooms.has(id);el.classList.toggle("on",on);el.textContent=on?"✓":"";const apply=this.shadowRoot.querySelector("#apply");if(apply){const same=!this._selectedRooms.size||this._sameMembers([...this._selectedRooms],this._currentGroup());apply.disabled=same;apply.textContent=this._groupActionLabel();}});
-    this.shadowRoot.querySelectorAll("[data-favorite]").forEach(el=>el.onclick=()=>this._hass.callService("media_player","play_media",{entity_id:this._selected,media_content_type:"favorite_item_id",media_content_id:el.dataset.favorite}));
+    this.shadowRoot.querySelectorAll("[data-favorite]").forEach(el=>el.onclick=async()=>{await this._applyStartVolume(this._selected);await this._hass.callService("media_player","play_media",{entity_id:this._selected,media_content_type:"favorite_item_id",media_content_id:el.dataset.favorite});});
     const musicSearch=this.shadowRoot.querySelector("#musicsearch");
     musicSearch?.addEventListener("input",e=>{this._lastSearch=e.target.value;});
     musicSearch?.addEventListener("keydown",e=>{
@@ -253,6 +281,7 @@ class SonosRemoteCard extends HTMLElement {
     this.shadowRoot.querySelector("[data-ma-back]")?.addEventListener("click",()=>this._searchMA(this._lastSearch,null));
     this.shadowRoot.querySelectorAll("[data-ma-uri]").forEach(el=>el.onclick=async()=>{
       try{
+        await this._applyStartVolume(this._selected);
         await this._hass.callWS({
           type:"sonos_remote/play",
           sonos_entity_id:this._selected,
@@ -266,6 +295,11 @@ class SonosRemoteCard extends HTMLElement {
         this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:e?.message||"Unable to play this Music Assistant item"},bubbles:true,composed:true}));
       }
     });
+    this.shadowRoot.querySelector("#roommore")?.addEventListener("click",()=>{this._settingsOpen=!this._settingsOpen;this._render();});
+    this.shadowRoot.querySelector("#starttoggle")?.addEventListener("click",async()=>{const c=this._roomSetting(this._selected),enabled=!c.start_volume_enabled;await this._saveRoomSetting(this._selected,enabled,c.start_volume);this._settingsOpen=true;this._render();});
+    const startVol=this.shadowRoot.querySelector("#startvol");
+    startVol?.addEventListener("input",e=>{const n=this.shadowRoot.querySelector("#startvolnum");if(n)n.textContent=e.target.value+"%";});
+    startVol?.addEventListener("change",async e=>{const c=this._roomSetting(this._selected);await this._saveRoomSetting(this._selected,c.start_volume_enabled,Number(e.target.value));});
     this.shadowRoot.querySelector("#openmedia")?.addEventListener("click",()=>{this._hass.navigate?.("/media-browser/browser");});
     this.shadowRoot.querySelectorAll("[data-qplay]").forEach(el=>el.onclick=()=>this._queueAction("play",el.dataset.qplay||null,Number(el.dataset.qindex)));
     this.shadowRoot.querySelectorAll("[data-qremove]").forEach(el=>el.onclick=e=>{e.stopPropagation();this._queueAction("remove",el.dataset.qremove||null,Number(el.dataset.qindex));});
@@ -294,6 +328,7 @@ class SonosRemoteCard extends HTMLElement {
           await this._hass.callService("media_player","unjoin",{entity_id:leader});
         else {
           const others=chosen.filter(id=>id!==leader);
+          for(const id of others) if(!before.includes(id)) await this._applyStartVolume(id);
           if(others.length)
             await this._hass.callService("media_player","join",{entity_id:leader,group_members:others});
         }
