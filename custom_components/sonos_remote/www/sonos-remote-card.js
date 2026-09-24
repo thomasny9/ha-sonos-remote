@@ -137,23 +137,12 @@ class SonosRemoteCard extends HTMLElement {
     return `<div class="fixedsettings"><div class="fixedtitle"><b>Fixed-volume Sonos</b><button id="closefixed"><ha-icon icon="mdi:close"></ha-icon></button></div><small>Mark Sonos outputs whose volume should not be controlled from this card.</small>${(this._players||[]).map(p=>`<label class="fixedrow"><span>${this._esc(p.attributes?.friendly_name||p.entity_id)}</span><input type="checkbox" data-fixed-player="${p.entity_id}" ${this._isFixedVolume(p)?"checked":""}></label>`).join("")}</div>`;
   }
   _openMusicAssistant() {
-    // The HAOS Music Assistant app is exposed as a Supervisor ingress panel.
-    // Its frontend route is /<addon-slug>/ingress/; HA then establishes the
-    // authenticated /api/hassio_ingress/... session for the MA UI.
+    // Navigate directly to the Music Assistant HA ingress panel. Do not use
+    // hass-action here: that event expects a tap_action-style config and can
+    // otherwise be interpreted as the default more-info action.
     const path = "/d5369777_music_assistant/ingress/";
-    const ev = new CustomEvent("hass-action", {
-      detail: { action: "navigate", config: { navigation_path: path } },
-      bubbles: true,
-      composed: true,
-    });
-    this.dispatchEvent(ev);
-    // Fallback for HA frontend contexts that do not handle hass-action.
-    requestAnimationFrame(() => {
-      if (window.location.pathname !== path) {
-        history.pushState(null,"",path);
-        window.dispatchEvent(new Event("location-changed"));
-      }
-    });
+    history.pushState(null, "", path);
+    window.dispatchEvent(new Event("location-changed"));
   }
   _discoverPlayers(hass) {
     const configured = this.config.entities || [];
@@ -387,4 +376,4 @@ class SonosRemoteCard extends HTMLElement {
 if(!customElements.get("sonos-remote-card")) customElements.define("sonos-remote-card",SonosRemoteCard);
 window.customCards=window.customCards||[];
 window.customCards.push({type:"sonos-remote-card",name:"Sonos Remote",description:"Mobile-first Sonos remote for Home Assistant."});
-console.info("%c SONOS REMOTE %c v0.4.3 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
+console.info("%c SONOS REMOTE %c v0.4.4 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
