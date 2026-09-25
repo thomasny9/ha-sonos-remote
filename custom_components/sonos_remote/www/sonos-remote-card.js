@@ -145,15 +145,16 @@ class SonosRemoteCard extends HTMLElement {
     if(item.is_playable===true) return true;
     return ["track","album","artist","playlist","radio","podcast","podcast_episode","audiobook"].includes(this._browseType(item));
   }
+  _visibleMyMusicItems() {
+    let items=this._myMusic?.items||[];
+    items=items.filter(item=>!this._isMABackItem(item) && !this._isMARootItem(item));
+    if(!this._myMusic?.path && !this._myMusicStack.length) items=items.filter(item=>this._musicServiceVisible(item));
+    return items;
+  }
   _myMusicHtml() {
     if(this._myMusicLoading && !this._myMusic) return `<div class="mahint">Loading My Music…</div>`;
     if(this._myMusic?.error) return `<div class="mahint">${this._esc(this._myMusic.error)}</div>`;
-    let items=this._myMusic?.items||[];
-    // MA prepends synthetic ".." navigation rows on non-root browse calls.
-    // The card already provides Back/Home controls, so suppress those rows to avoid
-    // sending MA's "root" or parent paths through a provider as invalid subpaths.
-    items=items.filter(item=>!this._isMABackItem(item) && !this._isMARootItem(item));
-    if(!this._myMusic?.path && !this._myMusicStack.length) items=items.filter(item=>this._musicServiceVisible(item));
+    const items=this._visibleMyMusicItems();
     if(!items.length) return `<div class="mahint">${this._myMusicLoading?"Loading…":"No browsable Music Assistant sources found."}</div>`;
     const iconFor=t=>({artist:"mdi:account-music",album:"mdi:album",track:"mdi:music-note",playlist:"mdi:playlist-music",radio:"mdi:radio",podcast:"mdi:podcast",podcast_episode:"mdi:podcast",audiobook:"mdi:book-music"}[t]||"mdi:folder-music");
     return items.map((item,i)=>{
@@ -404,7 +405,7 @@ class SonosRemoteCard extends HTMLElement {
     });
     this.shadowRoot.querySelector("#mymusichome")?.addEventListener("click",()=>this._myMusicHome());
     this.shadowRoot.querySelectorAll("[data-browse-open]").forEach(el=>el.onclick=async()=>{
-      const item=(this._myMusic?.items||[])[Number(el.dataset.browseIndex)];
+      const item=this._visibleMyMusicItems()[Number(el.dataset.browseIndex)];
       if(!item)return;
       if(el.dataset.browseOpen==="1"){
         await this._loadMyMusic(el.dataset.browsePath,true);
@@ -420,7 +421,7 @@ class SonosRemoteCard extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-browse-options]").forEach(el=>el.onclick=e=>{e.stopPropagation();const key=`browse:${el.dataset.browseOptions}`;this._maMenu=this._maMenu===key?null:key;this._render();});
     this.shadowRoot.querySelectorAll("[data-browse-action]").forEach(el=>el.onclick=async e=>{
       e.stopPropagation();
-      const item=(this._myMusic?.items||[])[Number(el.dataset.browseIndex)];
+      const item=this._visibleMyMusicItems()[Number(el.dataset.browseIndex)];
       if(!item)return;
       const uri=item.uri||item.media_content_id||item.path||"";
       const action=el.dataset.browseAction;
@@ -501,4 +502,4 @@ class SonosRemoteCard extends HTMLElement {
 if(!customElements.get("sonos-remote-card")) customElements.define("sonos-remote-card",SonosRemoteCard);
 window.customCards=window.customCards||[];
 window.customCards.push({type:"sonos-remote-card",name:"Sonos Remote",description:"Mobile-first Sonos remote for Home Assistant."});
-console.info("%c SONOS REMOTE %c v0.5.3 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
+console.info("%c SONOS REMOTE %c v0.5.4 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
