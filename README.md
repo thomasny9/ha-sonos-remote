@@ -4,7 +4,7 @@ Sonos Remote is a mobile-first Home Assistant remote with a Lovelace frontend an
 
 The Now Playing header includes quick access to the Music Assistant UI and a persistent **Fixed-volume Sonos** selector. Mark any Sonos entity that uses fixed line-out so the card hides its volume control while leaving normal Sonos speakers fully adjustable.
 
-## v0.5.3
+## v0.5.4
 
 This first version establishes the combined architecture.
 
@@ -21,7 +21,7 @@ This first version establishes the combined architecture.
 - Play/pause, previous and next
 - Volume control
 - Current group display
-- Four standard internal views: Now Playing, Rooms, Music and Queue\n- A fifth **My Music** tab appears automatically when Music Assistant is configured\n- My Music browses MA music sources and their folders in-place, with Play Now / Play Next / Add to Queue actions\n- Now Playing → ⋮ → **My Music services** lets you choose which MA sources appear in My Music; selections persist across restarts\n- My Music caches visited browse levels for faster back-and-forth navigation and provides a Home button to jump directly to its root\n- Music Assistant's synthetic parent/root browse rows are handled by the card rather than exposed as provider subpaths
+- Four standard internal views: Now Playing, Rooms, Music and Queue\n- A fifth **My Music** tab appears automatically when Music Assistant is configured\n- My Music browses MA music sources and their folders in-place, with Play Now / Play Next / Add to Queue actions\n- Now Playing → ⋮ → **My Music services** lets you choose which MA sources appear in My Music; selections persist across restarts\n- My Music caches visited browse levels for faster back-and-forth navigation and provides a Home button to jump directly to its root\n- Music Assistant's synthetic parent/root browse rows are handled by the card rather than exposed as provider subpaths\n- Filtered My Music rows retain correct browse targets after MA navigation entries or hidden services are removed
 - Home Assistant theme support
 - Rooms, Music and Queue are the next implementation stages
 
