@@ -136,7 +136,18 @@ class SonosRemoteCard extends HTMLElement {
     const raw=item.media_type||item.media_item_type||item.type||"";
     return String(raw).toLowerCase().replace("mediatype.","");
   }
-  _browsePath(item) { return item.path||item.uri||""; }
+  _browsePath(item) {
+    const returned=item.path||item.uri||"";
+    const current=this._myMusic?.path||"";
+    // At a provider root MA's BrowseFolder path can be serialized with the
+    // provider domain while browse routing requires the provider instance id.
+    // Rebuild first-level folder paths from the exact provider-instance root
+    // that successfully produced this listing.
+    if(current.endsWith("://") && this._browseType(item)==="folder" && item.item_id && item.item_id!=="root" && item.item_id!=="back"){
+      return current+item.item_id;
+    }
+    return returned;
+  }
   _isMABackItem(item) { return (item.name===".." || item.item_id==="back") && !!this._myMusicStack.length; }
   _isMARootItem(item) { return this._browsePath(item)==="root" || (item.item_id==="root" && item.provider==="library"); }
   _musicServiceId(item) { return this._browsePath(item)||item.provider_instance||item.provider||item.name||item.title||""; }
@@ -502,4 +513,4 @@ class SonosRemoteCard extends HTMLElement {
 if(!customElements.get("sonos-remote-card")) customElements.define("sonos-remote-card",SonosRemoteCard);
 window.customCards=window.customCards||[];
 window.customCards.push({type:"sonos-remote-card",name:"Sonos Remote",description:"Mobile-first Sonos remote for Home Assistant."});
-console.info("%c SONOS REMOTE %c v0.5.4 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
+console.info("%c SONOS REMOTE %c v0.5.5 ","color:white;background:#03a9f4;font-weight:bold","color:#03a9f4;background:white");
