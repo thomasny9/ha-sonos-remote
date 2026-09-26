@@ -4,7 +4,7 @@ Sonos Remote is a mobile-first Home Assistant remote with a Lovelace frontend an
 
 The Now Playing options menu includes Music Assistant access, a persistent **Default Sonos player** selector, and a persistent **Fixed-volume Sonos** selector. Mark any Sonos entity that uses fixed line-out so the card hides its volume control while leaving normal Sonos speakers fully adjustable.
 
-## v0.5.7
+## v0.5.8
 
 This first version establishes the combined architecture.
 
@@ -34,7 +34,7 @@ Restart Home Assistant, then go to **Settings → Devices & services → Add Int
 
 The integration serves the card at:
 
-`/sonos_remote/sonos-remote-card.js`
+`/sonos_remote/sonos-remote-card-v058.js`
 
 Until automatic Lovelace resource registration is added, add that URL once under Dashboard Resources as a **JavaScript Module**.
 
