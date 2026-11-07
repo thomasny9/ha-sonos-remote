@@ -4,10 +4,12 @@ Sonos Remote is a mobile-first Home Assistant remote with a Lovelace frontend an
 
 The Now Playing options menu includes Music Assistant access, a persistent **Default Sonos player** selector, and a persistent **Fixed-volume Sonos** selector. Mark any Sonos entity that uses fixed line-out so the card hides its volume control while leaving normal Sonos speakers fully adjustable.
 
-## v0.5.9
+## v0.5.10
+
+- Muted Sonos sources now display the mute symbol itself in red, including fixed-output Sonos players. Unmuted icons remain neutral.
 
 - Sonos mute/unmute controls are now always present on Now Playing and in Rooms, including fixed-output Sonos players. A red mute state is shown without enabling the volume slider.
-- Versioned frontend resource: `/sonos_remote/sonos-remote-card-v059.js?v=0.5.9`.
+- Versioned frontend resource: `/sonos_remote/sonos-remote-card-v0510.js?v=0.5.10`.
 
 
 This first version establishes the combined architecture.
@@ -38,7 +40,7 @@ Restart Home Assistant, then go to **Settings → Devices & services → Add Int
 
 The integration serves the card at:
 
-`/sonos_remote/sonos-remote-card-v059.js`
+`/sonos_remote/sonos-remote-card-v0510.js`
 
 Until automatic Lovelace resource registration is added, add that URL once under Dashboard Resources as a **JavaScript Module**.
 
